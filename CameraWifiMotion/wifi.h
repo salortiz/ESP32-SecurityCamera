@@ -27,8 +27,8 @@
 
 
 //     mDNS name
-//       const String mDNS_name = "esp32";
-//       const String mDNS_name = stitle;                                         // use sketch title
+//  const String mDNS_name = "esp32";
+  const String mDNS_name = stitle;                                         // use sketch title
 
 
 
@@ -61,7 +61,7 @@
     #define ESP_getChipId()   ((uint32_t)ESP.getEfuseMac())
     WebServer ACserver(80);               // temporary for autoconnect
     WebServer server(ServerPort);         // allows use of different ports
-    //#include <ESPmDNS.h>                // see https://github.com/espressif/arduino-esp32/tree/master/libraries/ESPmDNS
+    #include <ESPmDNS.h>                // see https://github.com/espressif/arduino-esp32/tree/master/libraries/ESPmDNS
   #elif defined ESP8266
     #include <ESP8266WiFi.h>              // https://github.com/esp8266/Arduino
     //needed for library
@@ -136,8 +136,8 @@ void startWifiManager() {
 // set wifi to auto re-connect if connection is lost
   WiFi.setAutoReconnect(1);
 
-//  // Set up mDNS responder:
-//    if (serialDebug) Serial.println( MDNS.begin(mDNS_name.c_str()) ? "mDNS responder started ok" : "Error setting up mDNS responder" );
+  // Set up mDNS responder:
+    if (serialDebug) Serial.println( MDNS.begin(mDNS_name.c_str()) ? "mDNS responder started ok" : "Error setting up mDNS responder" );
 
   // start NTP (Time)
     NTPUdp.begin(localPort);

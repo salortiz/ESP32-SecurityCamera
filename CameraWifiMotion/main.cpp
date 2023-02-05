@@ -54,11 +54,11 @@
 
   const char* sversion = "13Jan23";                      // version of this sketch
 
-  const bool serialDebug = 0;                            // provide debug info on serial port
+  const bool serialDebug = 1;                            // provide debug info on serial port
 
   bool flashIndicatorLED = 1;                            // flash the onboard led when detection is enabled
 
-  #define EMAIL_ENABLED 1                                // Enable E-mail support
+  #define EMAIL_ENABLED 0                                // Enable E-mail support
 
   #define ENABLE_OTA 1                                   // Enable Over The Air updates (OTA)
   const String OTAPassword = "password";                 // Password to enable OTA service (supplied as - http://<ip address>?pwd=xxxx )

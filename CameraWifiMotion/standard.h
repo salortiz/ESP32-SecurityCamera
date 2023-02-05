@@ -2,7 +2,7 @@
  *
  *      Procedures (which are likely to be the same between projects) - 01Feb22
  *
- *      part of the BasicWebserver sketch but with modified 'header', 'footer' and iclusion of spiffs.h
+ *      part of the BasicWebserver sketch but with modified 'header', 'footer' and inclusion of spiffs.h
  *
  *      Includes: log_system_message, webheader, webfooter, handleLogpage, handleReboot, WIFIcheck & decodeIP
  *                classes: Led, Button & repeatTimer.
