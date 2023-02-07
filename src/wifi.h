@@ -292,8 +292,8 @@ time_t getNTPTime() {
     // Send a UDP packet to the NTP pool address
     if (serialDebug) {
         Serial.print("\nSending NTP packet to ");
-      Serial.print(timeServer);
-      Serial.print(": ");
+        Serial.print(timeServer);
+        Serial.print(": ");
     }
     sendNTPpacket(timeServer);
 

@@ -16,11 +16,12 @@
 // ----------------------------------------------------------------
 
 // html text colour codes (obsolete html now and should really use CSS)
-  const char colRed[] = "<font color='#FF0000'>";           // red text
-  const char colGreen[] = "<font color='#006F00'>";         // green text
-  const char colBlue[] = "<font color='#0000FF'>";          // blue text
-  const char colEnd[] = "</font>";                          // end coloured text
-  const char htmlSpace[] = "&ensp;";                        // leave a space
+const char colRed[] = "<font color='#FF0000'>";           // red text
+const char colGreen[] = "<font color='#006F00'>";         // green text
+const char colBlue[] = "<font color='#0000FF'>";          // blue text
+const char colWhite[] = "<font color='white'>";
+const char colEnd[] = "</font>";                          // end coloured text
+const char htmlSpace[] = "&ensp;";                        // leave a space
 
 // misc variables
   String lastClient = "n/a";                  // IP address of most recent client connected
@@ -93,18 +94,17 @@ void webheader(WiFiClient &client, char* adnlStyle = " ", int refresh = 0) {
   // HTML / CSS
 
   // This is the below html compacted to save flash memory via https://www.textfixer.com/html/compress-html-compression.php
-  client.printf(R"=====( <title>%s</title> <style> body { color: black; background-color: #FFFF00; text-align: center; } ul {list-style-type: none; margin: 0; padding: 0; overflow: hidden; background-color: rgb(128, 64, 0);} li {float: left;} li a {display: inline-block; color: white; text-align: center; padding: 30px 20px; text-decoration: none;} li a:hover { background-color: rgb(100, 0, 0);} %s </style> </head> <body> <ul> <li><a href='%s'>Home</a></li> <li><a href='/log'>Log</a></li> <li><a href='/bootlog'>BootLog</a></li> <li><a href='/stream'>Live Video</a></li> <li><a href='/images'>Stored Images</a></li> <li><a href='/live'>Capture Image</a></li> <li><a href='/imagedata'>Raw Data</a></li> <h1> <font color='#FF0000'>%s</h1></font> </ul>)=====", stitle, adnlStyle, HomeLink, stitle);
+  // client.printf(R"=====( <title>%s</title> <style> body { color: black; background-color: #28538c; text-align: center; } ul {list-style-type: none; margin: 0; padding: 0; overflow: hidden; background-color: rgb(234, 64, 0);} li {float: left;} li a {display: inline-block; color: white; text-align: center; padding: 30px 20px; text-decoration: none;} li a:hover { background-color: rgb(100, 0, 0);} %s </style> </head> <body> <ul> <li><a href='%s'>Home</a></li> <li><a href='/log'>Log</a></li> <li><a href='/bootlog'>BootLog</a></li> <li><a href='/stream'>Live Video</a></li> <li><a href='/images'>Stored Images</a></li> <li><a href='/live'>Capture Image</a></li> <li><a href='/imagedata'>Raw Data</a></li> <h1> <font color='#FF0000'>%s</h1></font> </ul>)=====", stitle, adnlStyle, HomeLink, stitle);
 
-  /*
     client.printf(R"=====(
         <title>%s</title>
         <style>
           body {
             color: black;
-            background-color: #FFFF00;
+            background-color: #28538c;
             text-align: center;
           }
-          ul {list-style-type: none; margin: 0; padding: 0; overflow: hidden; background-color: rgb(128, 64, 0);}
+          ul {list-style-type: none; margin: 0; padding: 0; overflow: hidden; background-color: rgb(234, 141, 14);}
           li {float: left;}
           li a {display: inline-block; color: white; text-align: center; padding: 30px 20px; text-decoration: none;}
           li a:hover { background-color: rgb(100, 0, 0);}
@@ -123,8 +123,6 @@ void webheader(WiFiClient &client, char* adnlStyle = " ", int refresh = 0) {
           <h1> <font color='#FF0000'>%s</h1></font>
         </ul>
     )=====", stitle, adnlStyle, HomeLink, stitle);
-*/
-
 }
 
 
@@ -137,15 +135,15 @@ void webheader(WiFiClient &client, char* adnlStyle = " ", int refresh = 0) {
 
 void webfooter(WiFiClient &client) {
 
-  // get mac address
+    // get mac address
     byte mac[6];
     WiFi.macAddress(mac);
 
-  client.println("<br>");
+    client.println("<br>");
 
-  // Status display at bottom of screen 
-    client.println("<div style='text-align: center;background-color:rgb(128, 64, 0)'>");
-    client.printf("<small> %s", colRed);
+    // Status display at bottom of screen 
+    client.println("<div style='text-align: center;background-color:rgb(234, 141, 14)'>");
+    client.printf("<small>%s", colWhite);
     client.printf("%s %s", stitle, sversion);
 
     client.printf(" | Memory: %dK", ESP.getFreeHeap() /1000);
@@ -159,20 +157,19 @@ void webfooter(WiFiClient &client) {
     else if (tstat == timeNotSet) client.print(" | NTP Failed");
 
     // free space on spiffs
-      client.printf(" | Spiffs: %dK", ( SPIFFS.totalBytes() - SPIFFS.usedBytes() ) / 1024  );             // if using spiffs
+    client.printf(" | Spiffs: %dK", ( SPIFFS.totalBytes() - SPIFFS.usedBytes() ) / 1024  );             // if using spiffs
 
     // mac address 
     //  client.printf(" | MAC: %2x%2x%2x%2x%2x%2x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);       // mac address
 
     // free PSRAM
-      if (psramFound()) {
+    if (psramFound()) {
         client.printf(" | PSram: %dK", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024 );
-      }
+    }
 
-  // end 
-  client.printf("%s </small></div>\n", colEnd);
-  client.println("</body></html>");
-
+    // end 
+    client.printf("%s </small></div>\n", colEnd);
+    client.println("</body></html>");
 }
 
 
@@ -182,10 +179,10 @@ void webfooter(WiFiClient &client) {
 
 void handleLogpage() {
 
-  WiFiClient client = server.client();                     // open link with client
+    WiFiClient client = server.client();                     // open link with client
 
 /*
-  // log page request including clients IP address
+    // log page request including clients IP address
     IPAddress cip = client.remoteIP();
     String clientIP = decodeIP(cip.toString());   // get ip address and check if it is known
     log_system_message("Log page requested from: " + clientIP);
@@ -202,17 +199,16 @@ void handleLogpage() {
     // list all system messages
     int lpos = system_message_pointer;         // most recent entry
     for (int i=0; i < LogNumber; i++){         // count through number of entries
-      client.print(system_message[lpos]);
-      client.println("<br>");
-      if (lpos == 0) lpos = LogNumber;
-      lpos--;
+        client.print(system_message[lpos]);
+        client.println("<br>");
+        if (lpos == 0) lpos = LogNumber;
+        lpos--;
     }
 
     // close html page
-      webfooter(client);                       // send html page footer
-      delay(3);
-      client.stop();
-
+    webfooter(client);                       // send html page footer
+    delay(3);
+    client.stop();
 }
 
 
@@ -222,29 +218,28 @@ void handleLogpage() {
 
 void handleNotFound() {
 
-  WiFiClient client = server.client();          // open link with client
+    WiFiClient client = server.client();          // open link with client
 
-  // log page request including clients IP address
+    // log page request including clients IP address
     IPAddress cip = client.remoteIP();
     String clientIP = decodeIP(cip.toString());   // get ip address and check if it is known
     log_system_message("Invalid URL requested from: " + clientIP);
 
-  String message = "File Not Found\n\n";
-  message += "URI: ";
-  message += server.uri();
-  message += "\nMethod: ";
-  message += ( server.method() == HTTP_GET ) ? "GET" : "POST";
-  message += "\nArguments: ";
-  message += server.args();
-  message += "\n";
+    String message = "File Not Found\n\n";
+    message += "URI: ";
+    message += server.uri();
+    message += "\nMethod: ";
+    message += ( server.method() == HTTP_GET ) ? "GET" : "POST";
+    message += "\nArguments: ";
+    message += server.args();
+    message += "\n";
 
-  for ( uint8_t i = 0; i < server.args(); i++ ) {
-    message += " " + server.argName ( i ) + ": " + server.arg ( i ) + "\n";
-  }
+    for ( uint8_t i = 0; i < server.args(); i++ ) {
+        message += " " + server.argName ( i ) + ": " + server.arg ( i ) + "\n";
+    }
 
-  server.send ( 404, "text/plain", message );
-  message = "";      // clear variable
-
+    server.send ( 404, "text/plain", message );
+    message = "";      // clear variable
 }
 
 
@@ -254,15 +249,13 @@ void handleNotFound() {
 // note: this can fail if the esp has just been reflashed and not restarted
 
 void handleReboot(){
+    String message = "Rebooting....";
+    server.send(404, "text/plain", message);   // send reply as plain text
 
-      String message = "Rebooting....";
-      server.send(404, "text/plain", message);   // send reply as plain text
-
-      // rebooting
-        delay(500);          // give time to send the above html
-        ESP.restart();
-        delay(5000);         // restart fails without this delay
-
+    // rebooting
+    delay(500);          // give time to send the above html
+    ESP.restart();
+    delay(5000);         // restart fails without this delay
 }
 
 
@@ -271,24 +264,20 @@ void handleReboot(){
 // --------------------------------------------------------------------------------------
 
 bool WIFIcheck() {
-
     if (WiFi.status() != WL_CONNECTED) {
-      if ( wifiok == 1) {
-        log_system_message("Wifi connection lost");
-        wifiok = 0;
-      }
+        if ( wifiok == 1) {
+            log_system_message("Wifi connection lost");
+            wifiok = 0;
+        }
     } else {
-      // wifi is ok
-      if ( wifiok == 0) {
-        log_system_message("Wifi connection is back");
-        wifiok = 1;
-      }
+        // wifi is ok
+        if ( wifiok == 0) {
+            log_system_message("Wifi connection is back");
+            wifiok = 1;
+        }
     }
-
     return wifiok;
-
 }
-
 
 // --------------------------------------------------------------------------------------
 //                                       -LED control
@@ -347,6 +336,7 @@ class Led {
 };
 
 
+#ifdef EXTRA_CLASSES
 // --------------------------------------------------------------------------------------
 //                                    -button control
 // --------------------------------------------------------------------------------------
@@ -402,6 +392,7 @@ class Button {
     }
 
 };
+#endif /* EXTRA_CLASSES */
 
 
 // ----------------------------------------------------------------
@@ -443,6 +434,5 @@ class repeatTimer {
       _lastTime = millis();
     }
 };
-
 
 // --------------------------- E N D -----------------------------
