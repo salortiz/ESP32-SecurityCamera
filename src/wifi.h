@@ -19,8 +19,6 @@
 
 
 // **************************************** S e t t i n g s ****************************************
-
-
 // Configuration Portal (Autoconnect)
 const String AP_SSID = "ESPcam";
 const String AP_PASS = "password";
@@ -29,22 +27,15 @@ const String AP_PASS = "password";
 // mDNS name
 //  const String mDNS_name = "esp32";
 const String mDNS_name = stitle;                                         // use sketch title
-
-
-
 // *************************************************************************************************
-
-
-#include <Arduino.h>            // required by PlatformIO
-
 
 // forward declarations
 void startWifiManager();
 String currentTime(bool);
 bool IsBST();
-void sendNTPpacket();
+void sendNTPpacket(const char*);
 time_t getNTPTime();
-String requestWebPage(String, String, int, int, String, bool);
+String requestWebPage(String, String, int, int, String);
 
 
 // ----------------------------------------------------------------
@@ -136,7 +127,7 @@ void startWifiManager() {
     // set wifi to auto re-connect if connection is lost
     WiFi.setAutoReconnect(1);
 
-  // Set up mDNS responder:
+    // Set up mDNS responder:
     if (MDNS.begin(mDNS_name.c_str())) {
         if (serialDebug) Serial.println("mDNS responder started ok");
     } else {

@@ -24,9 +24,9 @@ const char colEnd[] = "</font>";                          // end coloured text
 const char htmlSpace[] = "&ensp;";                        // leave a space
 
 // misc variables
-  String lastClient = "n/a";                  // IP address of most recent client connected
-  int system_message_pointer = 0;             // pointer for current system message position
-  String system_message[LogNumber + 1];       // system log message store  (suspect serial port issues caused if not +1 ???)
+String lastClient = "n/a";                  // IP address of most recent client connected
+int system_message_pointer = 0;             // pointer for current system message position
+String system_message[LogNumber + 1];       // system log message store  (suspect serial port issues caused if not +1 ???)
 
 
 // ----------------------------------------------------------------
@@ -44,10 +44,10 @@ String decodeIP(String IPadrs) {
     else if (IPadrs == "192.168.1.143") IPadrs = "Shed 2 laptop";
 
     // log last IP client connected
-      if (IPadrs != lastClient) {
+    if (IPadrs != lastClient) {
         lastClient = IPadrs;
         log_system_message("New IP client connected: " + IPadrs);
-      }
+    }
 
     return IPadrs;
 }
@@ -58,15 +58,14 @@ String decodeIP(String IPadrs) {
 // ----------------------------------------------------------------
 
 void log_system_message(String smes) {
-
-  // increment position pointer
+    // increment position pointer
     system_message_pointer++;
     if (system_message_pointer >= LogNumber) system_message_pointer = 0;
 
-  // add the new message to log
+    // add the new message to log
     system_message[system_message_pointer] = currentTime(1) + " - " + smes;
 
-  // also send the message to serial
+    // also send the message to serial
     if (serialDebug) Serial.println("Log:" + system_message[system_message_pointer]);
 }
 
@@ -78,8 +77,7 @@ void log_system_message(String smes) {
 //    additional style settings can be included and auto page refresh rate
 
 void webheader(WiFiClient &client, char* adnlStyle = " ", int refresh = 0) {
-
-  // start html page
+    // start html page
     client.write("HTTP/1.1 200 OK\r\n");
     client.write("Content-Type: text/html\r\n");
     client.write("Connection: close\r\n");
@@ -88,13 +86,13 @@ void webheader(WiFiClient &client, char* adnlStyle = " ", int refresh = 0) {
     client.write("<html lang='en'>\n");
     client.write("<head>\n");
     client.write("  <meta name='viewport' content='width=device-width, initial-scale=1.0'>\n");
-  // page refresh
+    // page refresh
     if (refresh > 0) client.printf("  <meta http-equiv='refresh' content='%c'>\n", refresh);
 
-  // HTML / CSS
+    // HTML / CSS
 
-  // This is the below html compacted to save flash memory via https://www.textfixer.com/html/compress-html-compression.php
-  // client.printf(R"=====( <title>%s</title> <style> body { color: black; background-color: #28538c; text-align: center; } ul {list-style-type: none; margin: 0; padding: 0; overflow: hidden; background-color: rgb(234, 64, 0);} li {float: left;} li a {display: inline-block; color: white; text-align: center; padding: 30px 20px; text-decoration: none;} li a:hover { background-color: rgb(100, 0, 0);} %s </style> </head> <body> <ul> <li><a href='%s'>Home</a></li> <li><a href='/log'>Log</a></li> <li><a href='/bootlog'>BootLog</a></li> <li><a href='/stream'>Live Video</a></li> <li><a href='/images'>Stored Images</a></li> <li><a href='/live'>Capture Image</a></li> <li><a href='/imagedata'>Raw Data</a></li> <h1> <font color='#FF0000'>%s</h1></font> </ul>)=====", stitle, adnlStyle, HomeLink, stitle);
+    // This is the below html compacted to save flash memory via https://www.textfixer.com/html/compress-html-compression.php
+    // client.printf(R"=====( <title>%s</title> <style> body { color: black; background-color: #28538c; text-align: center; } ul {list-style-type: none; margin: 0; padding: 0; overflow: hidden; background-color: rgb(234, 64, 0);} li {float: left;} li a {display: inline-block; color: white; text-align: center; padding: 30px 20px; text-decoration: none;} li a:hover { background-color: rgb(100, 0, 0);} %s </style> </head> <body> <ul> <li><a href='%s'>Home</a></li> <li><a href='/log'>Log</a></li> <li><a href='/bootlog'>BootLog</a></li> <li><a href='/stream'>Live Video</a></li> <li><a href='/images'>Stored Images</a></li> <li><a href='/live'>Capture Image</a></li> <li><a href='/imagedata'>Raw Data</a></li> <h1> <font color='#FF0000'>%s</h1></font> </ul>)=====", stitle, adnlStyle, HomeLink, stitle);
 
     client.printf(R"=====(
         <title>%s</title>
@@ -188,7 +186,7 @@ void handleLogpage() {
     log_system_message("Log page requested from: " + clientIP);
 */    
     
-  // build the html 
+    // build the html
 
     webheader(client);                         // send html page header
 
@@ -288,50 +286,50 @@ bool WIFIcheck() {
 
 class Led {
 
-  private:
+    private:
     byte _gpioPin;                                     // gpio pin of the LED
     bool _onState;                                     // logic state when LED is on
 
-  public:
+    public:
     Led(byte gpioPin, bool onState=HIGH) {
-      this->_gpioPin = gpioPin;
-      this->_onState = onState;
-      pinMode(_gpioPin, OUTPUT);
-      off();
+        this->_gpioPin = gpioPin;
+        this->_onState = onState;
+        pinMode(_gpioPin, OUTPUT);
+        off();
     }
 
     void on() {
-      digitalWrite(_gpioPin, _onState);
+        digitalWrite(_gpioPin, _onState);
     }
 
     void off() {
-      digitalWrite(_gpioPin, !_onState);
+        digitalWrite(_gpioPin, !_onState);
     }
 
     void flip() {
-      digitalWrite(_gpioPin, !digitalRead(_gpioPin));   // flip the led status
+        digitalWrite(_gpioPin, !digitalRead(_gpioPin));   // flip the led status
     }
 
     bool status() {                                     // returns 1 if LED is on
-      bool sState = digitalRead(_gpioPin);
-      if (_onState == HIGH) return sState;
-      else return !sState;
+        bool sState = digitalRead(_gpioPin);
+        if (_onState == HIGH) return sState;
+        else return !sState;
     }
 
     void flash(int fLedDelay=350, int fReps=1) {
-      if (fLedDelay < 0 || fLedDelay > 20000) fLedDelay=300;   // capture invalid delay
-      bool fTempStat = digitalRead(_gpioPin);
-      if (fTempStat == _onState) {                      // if led is already on
-        off();
-        delay(fLedDelay);
-      }
-      for (int i=0; i<fReps; i++) {
-        on();
-        delay(fLedDelay);
-        off();
-        delay(fLedDelay);
-      }
-      if (fTempStat == _onState) on();                  // return led status if it was on
+        if (fLedDelay < 0 || fLedDelay > 20000) fLedDelay=300;   // capture invalid delay
+        bool fTempStat = digitalRead(_gpioPin);
+        if (fTempStat == _onState) {                      // if led is already on
+            off();
+            delay(fLedDelay);
+        }
+        for (int i=0; i<fReps; i++) {
+            on();
+            delay(fLedDelay);
+            off();
+            delay(fLedDelay);
+        }
+        if (fTempStat == _onState) on();                  // return led status if it was on
     }
 };
 
@@ -346,7 +344,7 @@ class Led {
 
 class Button {
 
-  private:
+    private:
     int      _debounceDelay = 40;              // default debounce setting (ms)
     uint32_t _timer;                           // timer used for debouncing
     bool     _rawState;                        // raw state of the button
@@ -355,40 +353,40 @@ class Button {
     bool     _debouncedState;                  // debounced state of button
     bool     _beenReleased = HIGH;             // flag to show the button has been released
 
-  public:
+    public:
     Button(byte bPin, bool bNormalState = LOW) {
-      this->_gpiopin = bPin;
-      this->_normalState = bNormalState;
-      pinMode(_gpiopin, INPUT);
-      _debouncedState = digitalRead(_gpiopin);
-      _timer = millis();
+        this->_gpiopin = bPin;
+        this->_normalState = bNormalState;
+        pinMode(_gpiopin, INPUT);
+        _debouncedState = digitalRead(_gpiopin);
+        _timer = millis();
     }
 
     bool update() {                            // update and return debounced button status
-      bool newReading = digitalRead(_gpiopin);
-      if (newReading != _rawState) {
-        _timer = millis();
-        _rawState = newReading;
-      }
-      if ( (unsigned long)(millis() - _timer) > _debounceDelay) _debouncedState = newReading;
-      return _debouncedState;
+        bool newReading = digitalRead(_gpiopin);
+        if (newReading != _rawState) {
+            _timer = millis();
+            _rawState = newReading;
+        }
+        if ( (unsigned long)(millis() - _timer) > _debounceDelay) _debouncedState = newReading;
+        return _debouncedState;
     }
 
     bool isPressed() {                          // returns TRUE if button is curently pressed
-      if (_normalState == LOW) return update();
-      else return (!update());
+        if (_normalState == LOW) return update();
+        else return (!update());
     }
 
     bool beenPressed() {                        // returns TRUE once per button press
-      bool cState = isPressed();
-      if (cState == LOW) _beenReleased = HIGH;
-      if (_beenReleased == LOW) cState = LOW;
-      if (cState == HIGH) _beenReleased = LOW;
-      return cState;
+        bool cState = isPressed();
+        if (cState == LOW) _beenReleased = HIGH;
+        if (_beenReleased == LOW) cState = LOW;
+        if (cState == HIGH) _beenReleased = LOW;
+        return cState;
     }
 
     void debounce(int debounceDelay) {          // change debounce delay setting
-      _debounceDelay = max(debounceDelay, 0);
+        _debounceDelay = max(debounceDelay, 0);
     }
 
 };
@@ -404,35 +402,34 @@ class Button {
 
 class repeatTimer {
 
-  private:
+    private:
     uint32_t  _lastTime;                                              // store of last time the event triggered
     bool _enabled;                                                    // if timer is enabled
 
-  public:
+    public:
     repeatTimer() {
-      reset();
-      enable();
+        reset();
+        enable();
     }
 
     bool check(uint32_t timerInterval, bool timerReset=1) {           // check if supplied time has passed
-      if ( (unsigned long)(millis() - _lastTime) >= timerInterval ) {
-        if (timerReset) reset();
-        if (_enabled) return 1;
-      }
-      return 0;
+        if ( (unsigned long)(millis() - _lastTime) >= timerInterval ) {
+            if (timerReset) reset();
+            if (_enabled) return 1;
+        }
+        return 0;
     }
 
     void disable() {                                                  // disable the timer
-      _enabled = 0;
+        _enabled = 0;
     }
 
     void enable() {                                                   // enable the timer
-      _enabled = 1;
+        _enabled = 1;
     }
 
     void reset() {                                                    // reset the timer
-      _lastTime = millis();
+        _lastTime = millis();
     }
 };
-
 // --------------------------- E N D -----------------------------
