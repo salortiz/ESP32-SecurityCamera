@@ -51,13 +51,9 @@
 
 
 const char* stitle = "UrbIOTSecurityCamera";           // title of this sketch
-
 const char* sversion = "06Feb23";                      // version of this sketch
-
-const bool serialDebug = 1;                            // provide debug info on serial port
-
+const short serialDebug = 1;                            // provide debug info on serial port
 bool flashIndicatorLED = 1;                            // flash the onboard led when detection is enabled
-
 #define EMAIL_ENABLED 0                                // Enable E-mail support
 
 #define ENABLE_OTA 1                                   // Enable Over The Air updates (OTA)
@@ -65,7 +61,13 @@ const String OTAPassword = "password";                 // Password to enable OTA
 
 #define FTP_ENABLED 0                                  // if ftp uploads are enabled
 
-#define PHP_ENABLED 1                                  // if PHP uploads are enabled
+#if (defined POST_SERVER)
+#define POST_ENABLED 1                                // if POST uploads are enabled
+String PostServerName = POST_SERVER;             // The domain to upload to
+int PostServerPort = 80;
+#else
+#error "No POST_SERVER DEFINED"
+#endif
 
 const String HomeLink = "/";                           // Where home button on web pages links to (usually "/")
 
@@ -106,7 +108,6 @@ int8_t cameraImageContrast = 0;                        // image contrast (-2 to 
 float thresholdGainCompensation = 0.65;                // motion detection level compensation for increased noise in image when gain increased (i.e. in darker conditions)
 
 // ---------------------------------------------------------------
-
 
 // forward declarations - many of these are only required by platformio
 void log_system_message(String smes);          // in standard.h
@@ -159,7 +160,7 @@ String TriggerTime = "Not yet triggered";  // Time of last motion detection as t
 uint32_t MaintTiming = millis();           // used for timing maintenance tasks
 bool emailWhenTriggered = 0;               // If emails will be sent when motion detected
 bool ftpImages = 0;                        // if to FTP images up to server (ftp.h)
-bool PHPImages = 0;                        // if to send images via PHP script (php.h)
+bool PostImages = 0;                       // if to send images via POST upload (php.h)
 bool ReqLEDStatus = 0;                     // desired status of the illuminator led (i.e. should it be on or off when not being used as a flash)
 const bool ledON = HIGH;                   // Status LED control
 const bool ledOFF = LOW;
@@ -170,23 +171,20 @@ bool SensorStatus = 1;                     // Status of the sensor i/o pin (gioP
 bool OTAEnabled = 0;                       // flag if OTA has been enabled (via supply of password)
 bool disableAllFunctions = 0;              // if set all functions other than web server are disabled
 
+#include <SPIFFS.h>                        // spiffs used to store images and settings
+#include <FS.h>                            // gives file access on spiffs
 
-#include "motion.h"                          // Include motion.h file for camera/motion detection code
-#include "wifi.h"                            // Load the Wifi / NTP stuff
-#include "standard.h"                        // Some standard procedures
+#include "motion.h"                        // Include motion.h file for camera/motion detection code
+#include "wifi.h"                          // Load the Wifi / NTP stuff
+#include "standard.h"                      // Some standard procedures
 
-#include "soc/soc.h"                         // Used to disable brownout detection
+#include "soc/soc.h"                       // Used to disable brownout detection
 #include "soc/rtc_cntl_reg.h"
 
-// spiffs used to store images and settings
-#include <SPIFFS.h>
-#include <FS.h>                            // gives file access on spiffs
-  int16_t SpiffsFileCounter = 0;             // counter of last image stored
+int16_t SpiffsFileCounter = 0;             // counter of last image stored
 
 // sd card - see https://randomnerdtutorials.com/esp32-cam-take-photo-save-microsd-card/
 #include "SD_MMC.h"
-  // #include <SPI.h>                        // (already loaded)
-#include <FS.h>                            // gives file access (already loaded?)
 #define SD_CS 5                            // sd chip select pin
 bool SD_Present;                           // flag if an sd card was found (0 = no)
 
@@ -205,8 +203,8 @@ Led statusLed1(onboardLED, LOW);             // set up onboard LED (LOW = on) - 
     #include "ftp.h"                           // Include ftp.h file for the ftp of captured images
 #endif
 
-#if PHP_ENABLED
-    #include "php.h"                           // Include php.h file for sending images via a php script
+#if POST_ENABLED
+    #include "post.h"                           // Include php.h file for sending images via a php script
 #endif
 
 
@@ -273,6 +271,13 @@ void setup() {
           SD_Present = 1;                           // flag working sd card found
         }
     }
+#if POST_ENABLED
+    int pp = PostServerName.indexOf(':');
+    if(pp != -1) {
+        PostServerPort = atoi(PostServerName.substring(pp+1).c_str());
+        PostServerName.remove(pp);
+    }
+#endif
 
     // configure the flash/illumination LED
     pinMode(Illumination_led, OUTPUT);
@@ -288,18 +293,7 @@ void setup() {
     pinMode(onboardLED, OUTPUT);
     digitalWrite(onboardLED, HIGH);   // off
 
-    // set up camera
-    bool tRes = setupCameraHardware();
-    if (!tRes) {      // reboot camera
-        if (serialDebug) Serial.println("Problem starting camera - rebooting it");
-        RestartCamera(PIXFORMAT_GRAYSCALE);                    // restart camera back to greyscale mode for motion detection
-        cameraImageSettings(FRAME_SIZE_MOTION);                // apply camera sensor settings
-    } else {
-        if (serialDebug) Serial.print(("Camera initialised ok"));
-    }
-
-    startWifiManager();                        // Connect to wifi (procedure is in wifi.h)
-
+    startWifiManager();                      // Connect to wifi (procedure is in wifi.h)
     WiFi.mode(WIFI_STA);     // turn off access point - options are WIFI_AP, WIFI_STA, WIFI_AP_STA or WIFI_OFF
 
     // set up web page request handling
@@ -324,17 +318,29 @@ void setup() {
     server.on("/ota", handleOTA);          // OTA update page
 #endif
 
+    // Check psram
+    if (!psramFound()) log_system_message("Warning: No PSRam detected - will limit size of images");
+
     // start web server
     if (serialDebug) Serial.println(("Starting web server"));
     server.begin();
+
+    // set up camera
+    bool tRes = setupCameraHardware(PIXFORMAT_GRAYSCALE);
+    if (!tRes) {      // reboot camera
+        delay(500);
+        if (serialDebug) Serial.println("Problem starting camera - rebooting it");
+        RestartCamera(PIXFORMAT_GRAYSCALE);                    // restart camera back to greyscale mode for motion detection
+        //cameraImageSettings(FRAME_SIZE_MOTION);                // apply camera sensor settings
+    } else {
+        if (serialDebug) Serial.println(("Camera initialised ok"));
+    }
 
     // Finished connecting to network
     BlinkLed(2);                             // flash the led twice
     log_system_message(String(stitle) + " Started");
 
     WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);       // Turn-off the 'brownout detector'
-
-    if (!psramFound()) log_system_message("Warning: No PSRam detected - will limit size of images");
 
     UpdateBootlogSpiffs("Booted");                   // store time of boot in bootlog
 
@@ -371,11 +377,11 @@ void loop(void){
 
     // camera motion detection
     if (DetectionEnabled == 1) {
-        if (!capture_still()) RebootCamera(PIXFORMAT_GRAYSCALE);                                // capture image, if problem reboot camera and try again
+        if (!capture_still()) RebootCamera(PIXFORMAT_GRAYSCALE);                              // capture image, if problem reboot camera and try again
         uint16_t changes = motion_detect();                                                   // find amount of change in current image frame compared to the last one
         update_frame();                                                                       // Copy current stored frame to previous stored frame
         if ( (changes >= Image_thresholdL) && (changes <= Image_thresholdH) ) {               // if enough change to count as motion detected
-            if (tCounter >= tCounterTrigger) {                                                  // only trigger if movement detected in more than one consequitive frames
+            if (tCounter >= tCounterTrigger) {                                                // only trigger if movement detected in more than one consequitive frames
                 tCounter = 0;
                 if ((unsigned long)(millis() - TRIGGERtimer) >= (TriggerLimitTime * 1000) ) {    // limit time between triggers
                     TRIGGERtimer = millis();                                                      // update last trigger time
@@ -405,13 +411,7 @@ void loop(void){
         tstatus = digitalRead(gioPin);        // debounce input
         if (tstatus != SensorStatus) {
             // input pin status has changed
-            if (tstatus == 1) {
-                SensorStatus = 1;
-                ioDetected(1);                    // trigger io status has changed procedure
-            } else {
-                SensorStatus = 0;
-                ioDetected(0);                    // trigger io status has changed procedure
-            }
+            ioDetected(SensorStatus = tstatus);
         }
     }
 
@@ -435,6 +435,8 @@ void loop(void){
 // Auto image adjustment
 //   runs every few seconds, called from loop
 void AutoAdjustImage() {
+    if(cfsize != FRAME_SIZE_MOTION)
+        return;
     float exposureAdjustmentSteps = (cameraImageExposure / 25) + 0.2;    // adjust by higher amount when at higher level (25 / 0.2 = default)
     float gainAdjustmentSteps = 0.5;
     float hyster = 20.0;                                                 // Hysteresis on brightness level
@@ -572,11 +574,11 @@ void LoadSettingsSpiffs() {
     else if (tnum == 1) ftpImages = 1;
     else log_system_message("Invalid FTP in settings: " + line);
 
-    // line 15 - PHPImages
+    // line 15 - PostImages
     ReadLineSpiffs(&file, &line, &tnum);
-    if (tnum == 0) PHPImages = 0;
-    else if (tnum == 1) PHPImages = 1;
-    else log_system_message("Invalid PHP in settings: " + line);
+    if (tnum == 0) PostImages = 0;
+    else if (tnum == 1) PostImages = 1;
+    else log_system_message("Invalid Post in settings: " + line);
 
     // line 16 - cameraImageInvert
     ReadLineSpiffs(&file, &line, &tnum);
@@ -637,7 +639,7 @@ void SaveSettingsSpiffs() {
     file.println(String(cameraImageGain));
     file.println(String(tCounterTrigger));
     file.println(String(ftpImages));
-    file.println(String(PHPImages));
+    file.println(String(PostImages));
     file.println(String(cameraImageInvert));
     file.println(String(dataRefresh));
 
@@ -694,7 +696,7 @@ void handleDefault() {
     cameraImageGain = 0;
     tCounterTrigger = 1;
     ftpImages = 0;
-    PHPImages = 0;
+    PostImages = 0;
 
     // Detection mask grid
     for (int y = 0; y < mask_rows; y++)
@@ -749,8 +751,8 @@ void handleRoot() {
 
     // Javascript - to periodically update the above info lines from http://x.x.x.x/data
     // This is the below javascript code compacted to save flash memory via https://www.textfixer.com/html/compress-html-compression.php
-    client.printf(R"=====(  <script> function getData() { var xhttp = new XMLHttpRequest(); xhttp.onreadystatechange = function() { if (this.readyState == 4 && this.status == 200) { var receivedArr = this.responseText.split(','); for (let i = 0; i < receivedArr.length; i++) { document.getElementById('uline' + i).innerHTML = receivedArr[i]; } } }; xhttp.open('GET', 'data', true); xhttp.send();} getData(); setInterval(function() { getData(); }, %d); </script> )=====", dataRefresh * 1000);
-/*
+    //client.printf(R"=====(  <script> function getData() { var xhttp = new XMLHttpRequest(); xhttp.onreadystatechange = function() { if (this.readyState == 4 && this.status == 200) { var receivedArr = this.responseText.split(','); for (let i = 0; i < receivedArr.length; i++) { document.getElementById('uline' + i).innerHTML = receivedArr[i]; } } }; xhttp.open('GET', 'data', true); xhttp.send();} getData(); setInterval(function() { getData(); }, %d); </script> )=====", dataRefresh * 1000);
+
     // get a comma seperated list from http://x.x.x.x/data and populate the blank lines in html above
     client.printf(R"=====(
         <script>
@@ -770,7 +772,6 @@ void handleRoot() {
               setInterval(function() { getData(); }, %d);
            </script>
         )=====", dataRefresh * 1000);
- */
 
     // ---------------------------------------------------------------------------------------------
 
@@ -779,12 +780,11 @@ void handleRoot() {
     client.write("<img id='image1' src='/jpg' width='320' height='240' /> </a>");     // show image from http://x.x.x.x/jpg
 
     // This is the below code compacted via https://www.textfixer.com/html/compress-html-compression.php
-    client.printf(R"=====(<script> function refreshImage(){ var timestamp = new Date().getTime(); var el = document.getElementById('image1'); var queryString = '?t=' + timestamp; el.src = '/jpg' + queryString; } setInterval(function() { refreshImage(); }, %d); </script>)=====", (dataRefresh * 1000) + 42);
+    //client.printf(R"=====(<script> function refreshImage(){ var timestamp = new Date().getTime(); var el = document.getElementById('image1'); var queryString = '?t=' + timestamp; el.src = '/jpg' + queryString; } setInterval(function() { refreshImage(); }, %d); </script>)=====", (dataRefresh * 1000) + 42);
 
- /*
-      // javascript to refresh the image periodically
-      client.printf(R"=====(
-         <script>
+    // javascript to refresh the image periodically
+    client.printf(R"=====(
+        <script>
            function refreshImage(){
                var timestamp = new Date().getTime();
                var el = document.getElementById('image1');
@@ -792,11 +792,8 @@ void handleRoot() {
                el.src = '/jpg' + queryString;
            }
            setInterval(function() { refreshImage(); }, %d);
-         </script>
-      )=====", (dataRefresh * 1000) + 42);
-
- */
-
+        </script>
+    )=====", (dataRefresh * 1000) + 42);
 
     // detection mask check grid (right of screen)
     client.write( "<div style='float: right;'>Detection Mask<br>");
@@ -817,11 +814,11 @@ void handleRoot() {
     //  client.print(tstr);
 
     // link to help/instructions page on github
-    client.printf("%s<a href='https://github.com/salortiz/ESP32-SecurityCamera/blob/master/README.md'>INSTRUCTIONS</a>%s\n", colBlue, colEnd);
+    //client.printf("%s<a href='https://github.com/salortiz/ESP32-SecurityCamera/blob/master/README.md'>INSTRUCTIONS</a>%s\n", colBlue, colEnd);
       // <a href='#' id='stdLink' target='popup' onclick=\"window.open('https://github.com/alanesq/CameraWifiMotion/blob/master/readme.txt' ,'popup', 'width=600,height=480'); return false; \">INSTRUCTIONS</a>" + endcolour + " \n";
 
     // refresh rate of the data frame
-    client.write(", Above refreshes every ");
+    client.write("Above refreshes every ");
     client.write("<input type='number' style='width: 40px' name='refreshRate' title='Delay between data refresh on this page (in seconds)'");
     client.printf(" min='1' max='600' value='%d'>seconds\n", dataRefresh);
 
@@ -836,7 +833,6 @@ void handleRoot() {
 #else
     targetBrightness = 0;
 #endif
-
     // minimum seconds between triggers
     client.write("<BR>Minimum time between triggers ");
     client.printf("<input type='number' style='width: 40px' name='triggertime' min='1' max='3600' value='%d'>seconds \n", TriggerLimitTime);
@@ -891,9 +887,9 @@ void handleRoot() {
     client.write("<input style='height: 30px;' name='ftp' value='ftp' title='FTP images when motion detected enable/disable' type='submit'> \n");
 #endif
 
-#if PHP_ENABLED
-    // toggle PHP
-    client.write("<input style='height: 30px;' name='php' value='php' title='Send images via PHP script when motion detected enable/disable' type='submit'> \n");
+#if POST_ENABLED
+    // toggle POST
+    client.write("<input style='height: 30px;' name='post' value='post' title='Send images via POST script when motion detected enable/disable' type='submit'> \n");
 #endif
 
     // Clear images in spiffs
@@ -934,14 +930,14 @@ void rootButtons() {
         SaveSettingsSpiffs();     // save settings in Spiffs
     }
 
-    // PHP was clicked -  send images via a php script
-    if (server.hasArg("php")) {
-        if (!PHPImages) {
-            log_system_message("PHP when motion detected enabled");
-            PHPImages = 1;
+    // Post was clicked -  send images via POST upload
+    if (server.hasArg("post")) {
+        if (!PostImages) {
+            log_system_message("POST when motion detected enabled");
+            PostImages = 1;
         } else {
-            log_system_message("PHP when motion detected disabled");
-            PHPImages = 0;
+            log_system_message("POST when motion detected disabled");
+            PostImages = 0;
         }
         SaveSettingsSpiffs();     // save settings in Spiffs
     }
@@ -1256,9 +1252,9 @@ void handleData(){
     if (ftpImages) reply += " {FTP enabled}&ensp;";
 #endif
 
-    // PHP status
-#if PHP_ENABLED
-    if (PHPImages) reply += " {PHP enabled}&ensp;";
+    // POST status
+#if POST_ENABLED
+    if (PostImages) reply += " {POST enabled}&ensp;";
 #endif
 
      // email status
@@ -1269,7 +1265,7 @@ void handleData(){
     //  if system disabled
     if (disableAllFunctions) reply += " {<font color='#FF0000'>ALL FUNCTIONS DISABLED</font>}&ensp;";
 
-    server.send(200, "text/plane", reply); //Send millis value only to client ajax request
+    server.send(200, "text/plain", reply); //Send millis value only to client ajax request
 }
 
 
@@ -1301,18 +1297,16 @@ void handlePing(){
 
 void handleLive(){
 
-  WiFiClient client = server.client();          // open link with client
+    WiFiClient client = server.client();          // open link with client
 
-  // log page request including clients IP address
+    // log page request including clients IP address
     IPAddress cip = client.remoteIP();
     String clientIP = decodeIP(cip.toString());   // get ip address and check if it is known
     log_system_message("Live page requested from: " + clientIP);
 
-  capturePhotoSaveSpiffs(UseFlash);          // capture an image from camera
+    capturePhotoSaveSpiffs(UseFlash);          // capture an image from camera
 
-  handleImages();                            // display captured image
-
-
+    handleImages();                            // display captured image
 }
 
 
@@ -1323,17 +1317,14 @@ void handleLive(){
 
 void handleCapture(){
 
-  WiFiClient client = server.client();          // open link with client
+    WiFiClient client = server.client();          // open link with client
 
-  // log page request including clients IP address
+    // log page request including clients IP address
     IPAddress cip = client.remoteIP();
     String clientIP = decodeIP(cip.toString());   // get ip address and check if it is known
     log_system_message("Capture image page requested from: " + clientIP);
-
-  server.send(404, "text/plain", "capturing live image");   // send reply as plain text
-
-  capturePhotoSaveSpiffs(UseFlash);          // capture an image from camera
-
+    server.send(404, "text/plain", "capturing live image");   // send reply as plain text
+    capturePhotoSaveSpiffs(UseFlash);          // capture an image from camera
 }
 
 
@@ -1602,9 +1593,9 @@ void handleImg() {
         TFileName = "/" + String(ImageToShow) + "s.jpg";
     }
 
-    if (ImageToShow == (MaxSpiffsImages + 1)) {           // live greyscale image requested ("grey");                         // capture live greyscale image
-      saveGreyscaleFrame("grey");                         // capture live greyscale image
-      TFileName = "/grey.jpg";
+    if (ImageToShow == (MaxSpiffsImages + 1)) {           // live greyscale image requested ("grey")
+        saveGreyscaleFrame("grey");                         // capture live greyscale image
+        TFileName = "/grey.jpg";
     } else {
       log_system_message("Displaying stored image: " + String(ImageToShow));
     }
@@ -1634,7 +1625,7 @@ void handleImg() {
 // note: bool Flash is no longer used?
 
 // check file saved to spiffs ok - by making sure file exists and is greater than 100 bytes
-bool checkPhoto( fs::FS &fs, String IFileName ) {
+bool checkPhoto(fs::FS &fs, String IFileName) {
     File f_pic = fs.open( IFileName );
     uint16_t pic_sz = f_pic.size();
     bool tres = ( pic_sz > 100 );
@@ -1645,25 +1636,21 @@ bool checkPhoto( fs::FS &fs, String IFileName ) {
 
 
 bool capturePhotoSaveSpiffs(bool Flash) {
-
     checkCameraIsFree();                                                // try to avoid using camera if already in use
     if (DetectionEnabled == 1) DetectionEnabled = 2;                    // pause motion detecting while photo is captured (not required with single core esp32?)
-
     // increment image count
     SpiffsFileCounter++;
     if (SpiffsFileCounter > MaxSpiffsImages) SpiffsFileCounter = 1;   // reset counter
-    SaveSettingsSpiffs();     // save settings in Spiffs
+    //SaveSettingsSpiffs();     // save settings in Spiffs
 
     // first quickly grab a greyscale image
     saveGreyscaleFrame(String(SpiffsFileCounter) + "s");
 
     // Capture a high res image
-
     RestartCamera(PIXFORMAT_JPEG);      // restart camera in jpg mode to take a photo (uses greyscale mode for motion detection)
 
     bool ok = 0;          // Boolean to indicate if the picture has been taken correctly
     byte TryCount = 0;    // attempt counter to limit retries
-
     do {           // try up to 3 times to capture/save image
         TryCount ++;
         if (serialDebug)
@@ -1679,9 +1666,8 @@ bool capturePhotoSaveSpiffs(bool Flash) {
     TRIGGERtimer = millis();                                                   // reset retrigger timer to stop instant motion trigger
     if (DetectionEnabled == 2) DetectionEnabled = 1;                           // restart paused motion detecting
 
-    bool tres = (TryCount == 3);
-    if (tres) log_system_message("Error: Unable to capture/store image");
-    return (!tres);
+    if (!ok) log_system_message("Error: Unable to capture/store image");
+    return (ok);
 }
 
 
@@ -1693,21 +1679,15 @@ bool capturePhotoSaveSpiffs(bool Flash) {
 void RestartCamera(pixformat_t format) {
 
     esp_camera_deinit();
-    if (format == PIXFORMAT_JPEG) config.frame_size = FRAME_SIZE_PHOTO;
-    else if (format == PIXFORMAT_GRAYSCALE) config.frame_size = FRAME_SIZE_MOTION;
-    else {
-        if (serialDebug) Serial.println("ERROR: Invalid image format");
-    }
-    config.pixel_format = format;
-    bool ok = esp_camera_init(&config);
-    if (ok == ESP_OK) {
+    bool ok = setupCameraHardware(format);
+    if (ok) {
         if (serialDebug) Serial.println("Camera mode switched ok");
     } else {
         // failed so try again
         esp_camera_deinit();
         delay(50);
-        ok = esp_camera_init(&config);
-        if (ok == ESP_OK) {
+        ok = setupCameraHardware(format); //esp_camera_init(&config);
+        if (ok) {
             if (serialDebug) Serial.println("Camera mode switched ok - 2nd attempt");
         } else {
             UpdateBootlogSpiffs("Camera failed to restart so rebooting camera");        // store in bootlog
@@ -1723,7 +1703,6 @@ void RestartCamera(pixformat_t format) {
 //      format = PIXFORMAT_GRAYSCALE or PIXFORMAT_JPEG
 
 void RebootCamera(pixformat_t format) {
-
     log_system_message("ERROR: Problem with camera detected so resetting it");
     // turn camera off then back on
     digitalWrite(PWDN_GPIO_NUM, HIGH);
@@ -1765,7 +1744,7 @@ bool WipeSpiffs() {
 
 
 // ----------------------------------------------------------------
-//              Save jpg in spiffs/sd card and FTP
+//              Save jpg in spiffs/sd card and FTP/POST
 // ----------------------------------------------------------------
 // filesName = name of jpg to save as in spiffs
 
@@ -1773,8 +1752,8 @@ void saveJpgFrame(String filesName) {
     // file names to use
     String IFileName = "/" + String(SpiffsFileCounter) + ".jpg";      // file name for Spiffs
     String TFileName = "/" + String(SpiffsFileCounter) + ".txt";
-    String SDfilename = "/" + currentTime(0) + ".jpg";                 // file name for sd card
-    String FTPfilename = currentTime(0) + "-L";                        // file name for FTP
+    String SDfilename = "/" + currentTime(0) + ".jpg";                // file name for sd card
+    String FTPfilename = currentTime(0) + "-L";                       // file name for FTP/POST
 
     // turn flash on if required
     if (UseFlash == 1) {
@@ -1783,14 +1762,14 @@ void saveJpgFrame(String filesName) {
     }
 
     // grab frame
-    cameraImageSettings(FRAME_SIZE_PHOTO);            // apply camera sensor settings
+    //cameraImageSettings(FRAME_SIZE_PHOTO);            // apply camera sensor settings
     camera_fb_t *fb = esp_camera_fb_get();            // capture frame from camera
     if (!fb) {
         if (serialDebug) {
           Serial.println("Camera capture failed - rebooting camera");
         }
         RebootCamera(PIXFORMAT_JPEG);
-        cameraImageSettings(FRAME_SIZE_PHOTO);          // apply camera sensor settings
+        //cameraImageSettings(FRAME_SIZE_PHOTO);          // apply camera sensor settings
         fb = esp_camera_fb_get();                       // try again to capture frame
     }
 
@@ -1863,10 +1842,9 @@ void saveJpgFrame(String filesName) {
         // ------------------ ftp images to server -------------------
         if (ftpImages) uploadImageByFTP(fb->buf, fb->len, FTPfilename);
 #endif
-
-#if PHP_ENABLED
+#if POST_ENABLED
         delay(500);   // required to stop server rejecting so soon after last one
-        if (PHPImages) sendPHP(fb->buf, fb->len, String(stitle) + "-L");
+        if (PostImages) postImage(fb->buf, fb->len, FTPfilename);
 #endif
 
     } else {
@@ -1878,27 +1856,25 @@ void saveJpgFrame(String filesName) {
 }
 
 // ----------------------------------------------------------------
-//       Save greyscale frame as jpg in spiffs/sd card/FTP
+//       Save greyscale frame as jpg in spiffs/sd card/FTP/POST
 // ----------------------------------------------------------------
 // filesName = name of jpg to save as in spiffs
 
 void saveGreyscaleFrame(String filesName) {
-
     // filenames to use
     String IFileName = "/" + filesName +".jpg";              // file name in spiffs
-    String SDFileName = "/" + currentTime(0) + "-S.jpg";      // file name on sd card
+    String SDFileName = "/" + currentTime(0) + "-S.jpg";     // file name on sd card
+    String FTPfilename = currentTime(0) + "-S";              // file name for FTP/POST
 
     // grab greyscale frame
     uint8_t * _jpg_buf;
     size_t _jpg_buf_len;
     camera_fb_t * fb = NULL;    // pointer
-    cameraImageSettings(FRAME_SIZE_MOTION);      // apply camera sensor settings
     fb = esp_camera_fb_get();
     if (!fb) {                                   // if failed to capture frame
         log_system_message("error: failed to capture greyscale image");
         return;
     }
-
     // convert greyscale to jpg
     bool jpeg_converted = frame2jpg(fb, 80, &_jpg_buf, &_jpg_buf_len);
     esp_camera_fb_return(fb);
@@ -1906,14 +1882,12 @@ void saveGreyscaleFrame(String filesName) {
         log_system_message("grey to jpg image conversion failed");
         return;
     }
-
     // save image to spiffs
     SPIFFS.remove(IFileName);                              // delete old image file if it exists
     File file = SPIFFS.open(IFileName, FILE_WRITE);        // create new file
     if (!file) log_system_message("Error: creating grey file on Spiffs");
     else if (!file.write(_jpg_buf, _jpg_buf_len)) log_system_message("Error: writing grey image to Spiffs");
     file.close();
-
     // save image to sd card
     if (SD_Present) {
         fs::FS &fs = SD_MMC;
@@ -1934,11 +1908,11 @@ void saveGreyscaleFrame(String filesName) {
 
     // ftp to server
 #if FTP_ENABLED
-    if (ftpImages) uploadImageByFTP(_jpg_buf, _jpg_buf_len, currentTime(0) + "-S");
+    if (ftpImages) uploadImageByFTP(_jpg_buf, _jpg_buf_len, FTPfilename);
 #endif
 
-#if PHP_ENABLED
-    if (PHPImages) sendPHP(_jpg_buf, _jpg_buf_len, String(stitle) + "-S");
+#if POST_ENABLED
+    if (PostImages) postImage(_jpg_buf, _jpg_buf_len, FTPfilename);
 #endif
 
   esp_camera_fb_return(fb);    // return frame so memory can be released
@@ -1968,8 +1942,8 @@ void ioDetected(bool iostat) {
 // ----------------------------------------------------------------
 
 void MotionDetected(uint16_t changes) {
-    checkCameraIsFree();                                                    // try to avoid using camera if already in use
-    if (DetectionEnabled == 1) DetectionEnabled = 2;                        // pause motion detecting (not required with single core esp32?)
+    if(!checkCameraIsFree()) return;                                        // try to avoid using camera if already in use
+    //if (DetectionEnabled == 1) DetectionEnabled = 2;                      // pause motion detecting (not required with single core esp32?)
 
     log_system_message("Camera detected motion: " + String(changes));
     TriggerTime = currentTime(1) + " - " + String(changes) + " out of " + String(mask_active * blocksPerMaskUnit);    // store time of trigger and motion detected
@@ -2034,7 +2008,7 @@ void handleStream(){
     client.write(BOUNDARY, bdrLen);
 
     RestartCamera(PIXFORMAT_JPEG);                // set camera in to jpeg mode
-    cameraImageSettings(FRAME_SIZE_PHOTO);        // apply camera sensor settings
+    //cameraImageSettings(FRAME_SIZE_PHOTO);        // apply camera sensor settings
 
     // send live images until client disconnects or timeout
     uint32_t streamStop = (unsigned long)millis() + (maxCamStreamTime * 1000);              // time limit for stream
@@ -2057,7 +2031,7 @@ void handleStream(){
     client.stop();
 
     RestartCamera(PIXFORMAT_GRAYSCALE);                    // restart camera back to greyscale mode for motion detection
-    cameraImageSettings(FRAME_SIZE_MOTION);                // apply camera sensor settings
+    //cameraImageSettings(FRAME_SIZE_MOTION);              // apply camera sensor settings
     TRIGGERtimer = millis();                               // reset retrigger timer to stop instant motion trigger
     if (DetectionEnabled == 2) DetectionEnabled = 1;       // restart paused motion detecting
 }
@@ -2084,7 +2058,8 @@ void handleJPG() {
     }
 
     // convert greyscale to JPG
-    fmt2jpg(fb->buf, fb->len, fb->width, fb->height, fb->format, 31, &jpg_buf, &jpg_size);
+    //fmt2jpg(fb->buf, fb->len, fb->width, fb->height, fb->format, 31, &jpg_buf, &jpg_size);
+    frame2jpg(fb, 31, &jpg_buf, &jpg_size);
     if (serialDebug) Serial.printf("Converted JPG size: %d bytes \n", jpg_size);
 
     // build and send html
@@ -2095,7 +2070,7 @@ void handleJPG() {
     client.write(HEADER, hdrLen);
     client.write(CTNTTYPE, cntLen);
 
-    // put some text in to 'buf' char array and send
+    // put the length in to 'buf' char array and send
     sprintf( buf, "%d\r\n\r\n", jpg_size);
     client.write(buf, strlen(buf));
 

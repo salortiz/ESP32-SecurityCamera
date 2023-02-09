@@ -13,7 +13,6 @@ String postImage(uint16_t*, size_t, String);
 
 //  ----------------------  s e t t i n g s --------------------------
 const String PostServerPath = "/upload";         // the php script file location
-const int PostServerPort = 80;
 //  ------------------------------------------------------------------
 
 
