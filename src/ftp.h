@@ -8,9 +8,8 @@
 
 // Note: this library does not provide any feedback so the sketch does not know if the FTP actually worked ok or not
 
-#include <Arduino.h>    // required by PlatformIO
+#ifdef FTP_ENABLED
 #include <ESP32_FTPClient.h>
-
 
 // **************************************** S e t t i n g s ****************************************
 
@@ -26,7 +25,7 @@ char ftp_pass[]   = "<ftp password>";
 ESP32_FTPClient ftp (ftp_server,ftp_user,ftp_pass, 5000, 2);             // timeout and debbug mode on the last 2 arguments
 
 // forward declarations
-  void uploadImageByFTP(uint8_t*, size_t, String);
+void uploadImageByFTP(uint8_t*, size_t, String);
 
 
 // ----------------------------------------------------------------
@@ -35,16 +34,11 @@ ESP32_FTPClient ftp (ftp_server,ftp_user,ftp_pass, 5000, 2);             // time
 // pass image frame buffer pointer, length, file name to use
 
 void uploadImageByFTP(uint8_t* buf, size_t len, String fName) {
+    if (serialDebug) Serial.println("FTP image");
 
-  if (serialDebug) Serial.println("FTP image");
+    ftp.OpenConnection();
 
-  ftp.OpenConnection();
-
-  // // Make a new directory
-  //  ftp.InitFile("Type A");
-  //  ftp.MakeDir("my_new_dir");
-
-  //Create a file and write the image data to it;
+    //Create a file and write the image data to it;
     ftp.ChangeWorkDir("/");
     ftp.InitFile("Type I");
     fName += ".jpg";
@@ -52,10 +46,8 @@ void uploadImageByFTP(uint8_t* buf, size_t len, String fName) {
     ftp.WriteData(buf, len);
     ftp.CloseFile();
 
-  ftp.CloseConnection();
-
-  // log_system_message("FTP");
+    ftp.CloseConnection();
 }
 
-
+#endif
 // ---------------------------------------------- end ----------------------------------------------
