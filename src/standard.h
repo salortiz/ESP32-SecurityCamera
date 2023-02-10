@@ -115,6 +115,7 @@ void webheader(WiFiClient &client, char* adnlStyle = " ", int refresh = 0) {
           <li><a href='/log'>Log</a></li>
           <li><a href='/bootlog'>BootLog</a></li>
           <li><a href='/stream'>Live Video</a></li>
+          <li><a href='/strpst'>Stream video</a></li>
           <li><a href='/images'>Stored Images</a></li>
           <li><a href='/live'>Capture Image</a></li>
           <li><a href='/imagedata'>Raw Data</a></li>

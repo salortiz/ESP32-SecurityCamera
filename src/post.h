@@ -22,18 +22,21 @@ const String PostServerPath = "/upload";         // the php script file location
 // pass image frame buffer pointer, length, file name to use
 
 String postImage(uint8_t* fbBuf, size_t fbLen, String fName = "cwm") {
-    WiFiClient client = server.client();
+    WiFiClient client = WiFiClient(); //server.client();
     String getAll;
     String getBody;
 
+    long startTime = millis();
+    long startTimer = 0;
     if (serialDebug) Serial.println("Connecting to server: " + PostServerName);
 
     if (client.connect(PostServerName.c_str(), PostServerPort)) {
+#define LBOUND "1234567890009876564321"
         if (serialDebug) Serial.println("Connection successful");
-        String head = "--RandomNerdTutorials\r\n"
+        String head = "--"LBOUND"\r\n"
             "Content-Disposition: form-data; name=\"imageFile\"; filename=\"" + fName + ".jpg\"\r\n"
             "Content-Type: image/jpeg\r\n\r\n";
-        String tail = "\r\n--RandomNerdTutorials--\r\n";
+        String tail = "\r\n--"LBOUND"--\r\n";
 
         uint16_t imageLen = fbLen;
         uint16_t extraLen = head.length() + tail.length();
@@ -42,10 +45,10 @@ String postImage(uint8_t* fbBuf, size_t fbLen, String fName = "cwm") {
         client.println("POST " + PostServerPath + " HTTP/1.1");
         client.println("Host: " + PostServerName);
         client.println("Content-Length: " + String(totalLen));
-        client.println("Content-Type: multipart/form-data; boundary=RandomNerdTutorials");
+        client.println("Content-Type: multipart/form-data; boundary="LBOUND);
         client.println();
         client.print(head);
-
+#undef LBOUND
         // send image from buffer
         for (size_t n=0; n<fbLen; n=n+1024) {
             if (n+1024 < fbLen) {
@@ -59,8 +62,8 @@ String postImage(uint8_t* fbBuf, size_t fbLen, String fName = "cwm") {
         }
         client.print(tail);
 
-        int timoutTimer = 10000;
-        long startTimer = millis();
+        int timoutTimer = 5000;
+        startTimer = millis();
         boolean state = false;
 
         // receive reply from server
@@ -94,7 +97,7 @@ String postImage(uint8_t* fbBuf, size_t fbLen, String fName = "cwm") {
     if (getBody.indexOf("has been uploaded") == -1) {
         log_system_message("Error sending image '" + fName + ".jpg' via POST");
     } else {
-        log_system_message("Image '" + fName + ".jpg' sent via POST");
+        log_system_message("Image '" + fName + ".jpg' sent via POST in " + String(startTimer-startTime) + "ms");
     }
 
     return getBody;

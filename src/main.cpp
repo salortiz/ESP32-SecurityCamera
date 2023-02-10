@@ -48,41 +48,37 @@
 // ---------------------------------------------------------------
 //                       - S E T T I N G S -
 // ---------------------------------------------------------------
+// You can use the following defines to activate de related feature
+//#define EMAIL_ENABLED                                // Enable E-mail support
+//#define FTP_ENABLED                                  // if ftp uploads are enabled
 
 
 const char* stitle = "UrbIOTSecurityCamera";           // title of this sketch
-const char* sversion = "06Feb23";                      // version of this sketch
-const short serialDebug = 1;                            // provide debug info on serial port
+const char* sversion = "2302101328";                   // version of this sketch
+const short serialDebug = 1;                           // provide debug info on serial port
 bool flashIndicatorLED = 1;                            // flash the onboard led when detection is enabled
-#define EMAIL_ENABLED 0                                // Enable E-mail support
 
 #define ENABLE_OTA 1                                   // Enable Over The Air updates (OTA)
-const String OTAPassword = "password";                 // Password to enable OTA service (supplied as - http://<ip address>?pwd=xxxx )
-
-#define FTP_ENABLED 0                                  // if ftp uploads are enabled
 
 #if (defined POST_SERVER)
-#define POST_ENABLED 1                                // if POST uploads are enabled
-String PostServerName = POST_SERVER;             // The domain to upload to
-int PostServerPort = 80;
+#define POST_ENABLED 1                                 // if POST uploads are enabled
+String PostServerName = POST_SERVER;                   // The domain to upload to
+int PostServerPort = 81;
 #else
 #error "No POST_SERVER DEFINED"
 #endif
 
-const String HomeLink = "/";                           // Where home button on web pages links to (usually "/")
-
-const byte LogNumber = 30;                             // number of entries in the system log
-
-const uint16_t ServerPort = 80;                        // ip port to serve web pages on
-
+const bool ledON = HIGH;                               // Status LED control
+const bool ledOFF = LOW;
 const byte onboardLED = 33;                            // indicator LED
-
+const int serialSpeed = 115200;                        // Serial data speed to use
+const String HomeLink = "/";                           // Where home button on web pages links to (usually "/")
+const byte LogNumber = 30;                             // number of entries in the system log
+const uint16_t ServerPort = 80;                        // ip port to serve web pages on
 const bool ledBlinkEnabled = 1;                        // enable blinking onboard status LED
 const uint16_t ledBlinkRate = 1500;                    // Speed to blink the status LED (milliseconds) - also perform some system tasks
-
-const int serialSpeed = 115200;                        // Serial data speed to use
-
 const uint16_t MaintCheckRate = 5;                     // how often to carry out routine system checks (seconds)
+const byte gioPin = 13;                                // I/O pin (for external sensor input)
 
 
 // camera related
@@ -90,27 +86,17 @@ const uint16_t MaintCheckRate = 5;                     // how often to carry out
 #define IMAGE_SETTINGS 1                               // Implement adjustment of camera sensor settings
 
 const int8_t MaxSpiffsImages = 6;                      // number of images to store in camera (Spiffs)
-
 const uint32_t maxCamStreamTime = 60;                  // max camera stream can run for (seconds)
-
 const uint16_t Illumination_led = 4;                   // illumination LED pin
-
 const byte flashMode = 2;                              // 1=take picture using flash when dark, 2=use flash every time, 3=flash after capturing the image as display only
-
-const byte gioPin = 13;                                // I/O pin (for external sensor input)
-
 bool ioRequiredHighToTrigger = 0;                      // If motion detection only triggers if IO input is also high
-
 int8_t cameraImageBrightness = 0;                      // image brighness (-2 to 2) - Note: has no effect?
-
 int8_t cameraImageContrast = 0;                        // image contrast (-2 to 2) - Note: has no effect?
-
 float thresholdGainCompensation = 0.65;                // motion detection level compensation for increased noise in image when gain increased (i.e. in darker conditions)
 
 // ---------------------------------------------------------------
-
 // forward declarations - many of these are only required by platformio
-void log_system_message(String smes);          // in standard.h
+void log_system_message(String smes);                  // in standard.h
 void BlinkLed(byte Bcount);
 void AutoAdjustImage();
 void LoadSettingsSpiffs();
@@ -139,11 +125,10 @@ void saveGreyscaleFrame(String filesName);
 void ioDetected(bool iostat);
 void MotionDetected(uint16_t changes);
 void handleStream();
+void handleStrPst();
 void handleJPG();
 void handleTest();
 bool checkCameraIsFree();
-
-
 // ---------------------------------------------------------------
 
 
@@ -160,28 +145,24 @@ String TriggerTime = "Not yet triggered";  // Time of last motion detection as t
 uint32_t MaintTiming = millis();           // used for timing maintenance tasks
 bool emailWhenTriggered = 0;               // If emails will be sent when motion detected
 bool ftpImages = 0;                        // if to FTP images up to server (ftp.h)
-bool PostImages = 0;                       // if to send images via POST upload (php.h)
+bool PostImages = 0;                       // if to send images via POST upload (post.h)
 bool ReqLEDStatus = 0;                     // desired status of the illuminator led (i.e. should it be on or off when not being used as a flash)
-const bool ledON = HIGH;                   // Status LED control
-const bool ledOFF = LOW;
 uint16_t TriggerLimitTime = 2;             // min time between motion detection trigger events (seconds)
 uint16_t EmailLimitTime = 60;              // min time between email sending (seconds)
 bool UseFlash = 1;                         // use flash when taking a picture (1=yes)
 bool SensorStatus = 1;                     // Status of the sensor i/o pin (gioPin)
 bool OTAEnabled = 0;                       // flag if OTA has been enabled (via supply of password)
 bool disableAllFunctions = 0;              // if set all functions other than web server are disabled
+int16_t SpiffsFileCounter = 0;             // counter of last image stored
 
 #include <SPIFFS.h>                        // spiffs used to store images and settings
 #include <FS.h>                            // gives file access on spiffs
-
 #include "motion.h"                        // Include motion.h file for camera/motion detection code
 #include "wifi.h"                          // Load the Wifi / NTP stuff
 #include "standard.h"                      // Some standard procedures
-
 #include "soc/soc.h"                       // Used to disable brownout detection
 #include "soc/rtc_cntl_reg.h"
 
-int16_t SpiffsFileCounter = 0;             // counter of last image stored
 
 // sd card - see https://randomnerdtutorials.com/esp32-cam-take-photo-save-microsd-card/
 #include "SD_MMC.h"
@@ -191,20 +172,21 @@ bool SD_Present;                           // flag if an sd card was found (0 = 
 Led statusLed1(onboardLED, LOW);             // set up onboard LED (LOW = on) - standard.h
 
 #if ENABLE_OTA
-    #include "ota.h"                           // Over The Air updates (OTA)
+    const String OTAPassword = "password";   // Password to enable OTA service (supplied as - http://<ip address>?pwd=xxxx )
+    #include "ota.h"                         // Over The Air updates (OTA)
 #endif
 
-#if EMAIL_ENABLED
+#ifdef EMAIL_ENABLED
     #define _SenderName "ESP"                // name of email sender (no spaces)
     #include "email.h"
 #endif
 
-#if FTP_ENABLED
-    #include "ftp.h"                           // Include ftp.h file for the ftp of captured images
+#ifdef FTP_ENABLED
+    #include "ftp.h"                         // Include ftp.h file for the ftp of captured images
 #endif
 
 #if POST_ENABLED
-    #include "post.h"                           // Include php.h file for sending images via a php script
+    #include "post.h"                        // Include php.h file for sending images via POST (can use a PHP script)
 #endif
 
 
@@ -277,6 +259,7 @@ void setup() {
         PostServerPort = atoi(PostServerName.substring(pp+1).c_str());
         PostServerName.remove(pp);
     }
+    log_system_message("Will post images to " + PostServerName + ":" +String(PostServerPort));
 #endif
 
     // configure the flash/illumination LED
@@ -312,6 +295,7 @@ void setup() {
     server.on("/bootlog", handleBootLog);    // display boot log (stored in Spiffs)
     server.on("/imagedata", handleImagedata);// show raw image data
     server.on("/stream", handleStream);      // stream live image
+    server.on("/strpst", handleStrPst);      // Post stream live image
     server.on("/jpg", handleJPG);            // display the greyscale motion detection image as a jpg
     server.onNotFound(handleNotFound);       // invalid page requested
 #if ENABLE_OTA
@@ -383,8 +367,8 @@ void loop(void){
         if ( (changes >= Image_thresholdL) && (changes <= Image_thresholdH) ) {               // if enough change to count as motion detected
             if (tCounter >= tCounterTrigger) {                                                // only trigger if movement detected in more than one consequitive frames
                 tCounter = 0;
-                if ((unsigned long)(millis() - TRIGGERtimer) >= (TriggerLimitTime * 1000) ) {    // limit time between triggers
-                    TRIGGERtimer = millis();                                                      // update last trigger time
+                if ((unsigned long)(millis() - TRIGGERtimer) >= (TriggerLimitTime * 1000) ) { // limit time between triggers
+                    TRIGGERtimer = millis();                                                  // update last trigger time
                     // run motion detected procedure (blocked if io high is required)
                     if (ioRequiredHighToTrigger == 0 || SensorStatus == 1) {
                         MotionDetected(changes);
@@ -477,7 +461,6 @@ void ReadLineSpiffs(File* file, String* line, uint16_t* tnum) {
     tline = tfile.readStringUntil('\n');
     *tnum = tline.toInt();
 }
-
 
 void LoadSettingsSpiffs() {
     String TFileName = "/settings.txt";
@@ -708,7 +691,6 @@ void handleDefault() {
     TRIGGERtimer = millis();                   // reset last image captured timer (to prevent instant trigger)
 
     String message = "reset to default";
-
     server.send(404, "text/plain", message);   // send reply as plain text
     message = "";      // clear string
 }   // handle default
@@ -842,7 +824,7 @@ void handleRoot() {
     client.write("<input type='number' style='width: 30px' name='consec' title='The number of changed images detected in a row required to trigger ");
     client.printf("motion detected' min='1' max='100' value='%d'>\n", tCounterTrigger);
 
-#if EMAIL_ENABLED
+#ifdef EMAIL_ENABLED
     // minimum seconds between email sends
     if (emailWhenTriggered) {
         client.write("<BR>Minimum time between E-mails:");
@@ -877,12 +859,12 @@ void handleRoot() {
     // Toggle motion detection
     client.write("<input style='height: 30px;' name='detection' title='Motion detection enable/disable' value='Detection' type='submit'> \n");
 
-#if EMAIL_ENABLED
+#ifdef EMAIL_ENABLED
     // Toggle email when motion detection
     client.write("<input style='height: 30px;' name='email' value='Email' title='Send email when motion detected enable/disable' type='submit'> \n");
 #endif
 
-#if FTP_ENABLED
+#ifdef FTP_ENABLED
     // toggle FTP
     client.write("<input style='height: 30px;' name='ftp' value='ftp' title='FTP images when motion detected enable/disable' type='submit'> \n");
 #endif
@@ -1248,7 +1230,7 @@ void handleData(){
 #endif
 
     // FTP status
-#if FTP_ENABLED
+#ifdef FTP_ENABLED
     if (ftpImages) reply += " {FTP enabled}&ensp;";
 #endif
 
@@ -1258,7 +1240,7 @@ void handleData(){
 #endif
 
      // email status
-#if EMAIL_ENABLED
+#ifdef EMAIL_ENABLED
     if (emailWhenTriggered) reply += " {<font color='#FF0000'>Email sending enabled</font>}&ensp;";
 #endif
 
@@ -1505,7 +1487,6 @@ void handleImagedata() {
 }
 
 
-
 // generate the html for a table cell
 //    idat=the greyscale value, mactive=if in the active area of the mask
 
@@ -1677,7 +1658,6 @@ bool capturePhotoSaveSpiffs(bool Flash) {
 // switches camera mode - format = PIXFORMAT_GRAYSCALE or PIXFORMAT_JPEG
 
 void RestartCamera(pixformat_t format) {
-
     esp_camera_deinit();
     bool ok = setupCameraHardware(format);
     if (ok) {
@@ -1762,7 +1742,6 @@ void saveJpgFrame(String filesName) {
     }
 
     // grab frame
-    //cameraImageSettings(FRAME_SIZE_PHOTO);            // apply camera sensor settings
     camera_fb_t *fb = esp_camera_fb_get();            // capture frame from camera
     if (!fb) {
         if (serialDebug) {
@@ -1838,12 +1817,12 @@ void saveJpgFrame(String filesName) {
                 file.close();
             }
         }
-#if FTP_ENABLED
+#ifdef FTP_ENABLED
         // ------------------ ftp images to server -------------------
         if (ftpImages) uploadImageByFTP(fb->buf, fb->len, FTPfilename);
 #endif
 #if POST_ENABLED
-        delay(500);   // required to stop server rejecting so soon after last one
+        delay(200);   // required to stop server rejecting so soon after last one
         if (PostImages) postImage(fb->buf, fb->len, FTPfilename);
 #endif
 
@@ -1907,15 +1886,15 @@ void saveGreyscaleFrame(String filesName) {
     }
 
     // ftp to server
-#if FTP_ENABLED
+#ifdef FTP_ENABLED
     if (ftpImages) uploadImageByFTP(_jpg_buf, _jpg_buf_len, FTPfilename);
 #endif
 
 #if POST_ENABLED
-    if (PostImages) postImage(_jpg_buf, _jpg_buf_len, FTPfilename);
+    // Can be, but why?
+    //if (PostImages) postImage(_jpg_buf, _jpg_buf_len, FTPfilename);
 #endif
 
-  esp_camera_fb_return(fb);    // return frame so memory can be released
   heap_caps_free(_jpg_buf);                        // return jpg buffer memory
 }
 
@@ -1930,6 +1909,7 @@ void ioDetected(bool iostat) {
 
     log_system_message("IO input has triggered - status = " + String(iostat));
 
+    // TODO
     // int capres = capturePhotoSaveSpiffs(UseFlash);                       // capture an image
 
     // TRIGGERtimer = millis();                                             // reset retrigger timer to stop instant motion trigger
@@ -1943,14 +1923,13 @@ void ioDetected(bool iostat) {
 
 void MotionDetected(uint16_t changes) {
     if(!checkCameraIsFree()) return;                                        // try to avoid using camera if already in use
-    //if (DetectionEnabled == 1) DetectionEnabled = 2;                      // pause motion detecting (not required with single core esp32?)
 
     log_system_message("Camera detected motion: " + String(changes));
     TriggerTime = currentTime(1) + " - " + String(changes) + " out of " + String(mask_active * blocksPerMaskUnit);    // store time of trigger and motion detected
 
     int capres = capturePhotoSaveSpiffs(UseFlash);                                     // capture an image
 
-#if EMAIL_ENABLED
+#ifdef EMAIL_ENABLED
     // send email if long enough since last motion detection (or if this is the first one)
     if (emailWhenTriggered) {       // add "&& cameraImageGain == 0" to only email during daylight hours (i.e. Chris's setting)
         unsigned long currentMillis = millis();        // get current time
@@ -2008,7 +1987,6 @@ void handleStream(){
     client.write(BOUNDARY, bdrLen);
 
     RestartCamera(PIXFORMAT_JPEG);                // set camera in to jpeg mode
-    //cameraImageSettings(FRAME_SIZE_PHOTO);        // apply camera sensor settings
 
     // send live images until client disconnects or timeout
     uint32_t streamStop = (unsigned long)millis() + (maxCamStreamTime * 1000);              // time limit for stream
@@ -2031,11 +2009,55 @@ void handleStream(){
     client.stop();
 
     RestartCamera(PIXFORMAT_GRAYSCALE);                    // restart camera back to greyscale mode for motion detection
-    //cameraImageSettings(FRAME_SIZE_MOTION);              // apply camera sensor settings
     TRIGGERtimer = millis();                               // reset retrigger timer to stop instant motion trigger
     if (DetectionEnabled == 2) DetectionEnabled = 1;       // restart paused motion detecting
 }
 
+void handleStrPst() {
+    WiFiClient client = server.client();          // open link with client
+    // log page request including clients IP address
+    IPAddress cip = client.remoteIP();
+    String clientIP = decodeIP(cip.toString());   // get ip address and check if it is known
+    log_system_message("Stream post requested from: " + clientIP);
+
+    camera_fb_t * fb = NULL;
+    String FTPfilename = currentTime(0) + "-L";            // file name for FTP/POST
+    String result = "None yet";
+    int frame_num = 0;
+    checkCameraIsFree();
+    if (DetectionEnabled == 1) DetectionEnabled = 2;
+    RestartCamera(PIXFORMAT_JPEG);
+    log_system_message("Remote video stream started");
+    String message = "Streaming...";
+    server.send(404, "text/plain", message);   // send reply as plain text
+    uint32_t streamStop = (unsigned long)millis() + (maxCamStreamTime * 1000);              // time limit for stream
+    while (millis() < streamStop )
+    {
+        fb = esp_camera_fb_get();
+        if (!fb) {
+            if (serialDebug) {
+            Serial.println("Camera capture failed - rebooting camera");
+            }
+            RebootCamera(PIXFORMAT_JPEG);
+            fb = esp_camera_fb_get();
+        }
+        if(fb) { // Success
+            result = postImage(fb->buf, fb->len, String(FTPfilename + String(++frame_num)));
+            esp_camera_fb_return(fb);
+            if (result.indexOf("has been uploaded") == -1) break;
+            delay(200); // Expect 5fps
+        } else {
+            if (serialDebug) {
+                Serial.println("Capture of image failed");
+            }
+            break;
+        }
+    }
+    log_system_message("Remote video stream end:" + result);
+    RestartCamera(PIXFORMAT_GRAYSCALE);                    // restart camera back to greyscale mode for motion detection
+    TRIGGERtimer = millis();                               // reset retrigger timer to stop instant motion trigger
+    if (DetectionEnabled == 2) DetectionEnabled = 1;       // restart paused motion detecting
+}
 
 // ----------------------------------------------------------------
 // -show motion detection frame as a JPG      i.e. http://x.x.x.x/jpg
@@ -2114,7 +2136,7 @@ void handleTest(){
     //// demo of how to request a web page over GSM
     //    requestWebPageGSM("alanesq.eu5.net", "/temp/q.txt", 80);
 
-#if EMAIL_ENABLED
+#ifdef EMAIL_ENABLED
     client.write("<br>Sending test email<br>\n");
     // send a test email
     _message[0]=0; _subject[0]=0;          // clear any existing text
