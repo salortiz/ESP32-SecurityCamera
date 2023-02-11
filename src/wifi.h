@@ -148,35 +148,33 @@ void startWifiManager() {
 // Notes: two formats available, for British summer time
 
 String currentTime(bool dFormat = 1){
-
     time_t t=now();     // get current time
     String ttime;
     int tstore;
 
     if (year(t) < 2021) return "Time Unknown";
 
-    if (IsBST()) t+=3600;     // add one hour if it is Summer Time
+    //if (IsBST()) t+=3600;     // add one hour if it is Summer Time
 
-    if (dFormat == 0) {
+    if (dFormat == 0) { // (ISO-8601) 
         // format suitable for file names
         // date
-        ttime += String(year(t));
+        ttime += String(year(t)) + '-';
         tstore = month(t);   if (tstore<10) ttime+="0";
-        ttime += String(tstore);
+        ttime += String(tstore) + '-';
         tstore = day(t);   if (tstore<10) ttime+="0";
-        ttime += String(tstore) + "_";
+        ttime += String(tstore) + "T";
         // time
         tstore = hour(t);   if (tstore<10) ttime+="0";
-        ttime += String(tstore);
+        ttime += String(tstore) + ':';
         tstore = minute(t);   if (tstore<10) ttime+="0";
-        ttime += String(tstore);
+        ttime += String(tstore) + ':';
         tstore = second(t);   if (tstore<10) ttime+="0";
-        ttime += String(tstore);
-        ttime += "_" + DoW[weekday(t)-1];
+        ttime += String(tstore) + 'Z';
     } else {
       // format easily read by humans
       // date
-        ttime += DoW[weekday(t)-1] + " ";
+        //ttime += DoW[weekday(t)-1] + " ";
         tstore = day(t);   if (tstore<10) ttime+="0";
         ttime += String(tstore) + "/";
         tstore = month(t);   if (tstore<10) ttime+="0";
@@ -188,7 +186,7 @@ String currentTime(bool dFormat = 1){
         tstore = minute(t);   if (tstore<10) ttime+="0";
         ttime += String(tstore) + ":";
         tstore = second(t);   if (tstore<10) ttime+="0";
-        ttime += String(tstore);
+        ttime += String(tstore) + 'UTC';
     }
 
     return ttime;
