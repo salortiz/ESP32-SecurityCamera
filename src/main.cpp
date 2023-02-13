@@ -158,7 +158,7 @@ int16_t SpiffsFileCounter = 0;             // counter of last image stored
 #include <SPIFFS.h>                        // spiffs used to store images and settings
 #include <FS.h>                            // gives file access on spiffs
 #include "motion.h"                        // Include motion.h file for camera/motion detection code
-#include "wifi.h"                          // Load the Wifi / NTP stuff
+#include "net.h"                          // Load the Wifi / NTP stuff
 #include "standard.h"                      // Some standard procedures
 #include "soc/soc.h"                       // Used to disable brownout detection
 #include "soc/rtc_cntl_reg.h"
