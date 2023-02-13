@@ -159,18 +159,18 @@ String currentTime(bool dFormat = 1){
     if (dFormat == 0) { // (ISO-8601) 
         // format suitable for file names
         // date
-        ttime += String(year(t)) + '-';
+        ttime += String(year(t)) + "-";
         tstore = month(t);   if (tstore<10) ttime+="0";
-        ttime += String(tstore) + '-';
+        ttime += String(tstore) + "-";
         tstore = day(t);   if (tstore<10) ttime+="0";
         ttime += String(tstore) + "T";
         // time
         tstore = hour(t);   if (tstore<10) ttime+="0";
-        ttime += String(tstore) + ':';
+        ttime += String(tstore) + ":";
         tstore = minute(t);   if (tstore<10) ttime+="0";
-        ttime += String(tstore) + ':';
+        ttime += String(tstore) + ":";
         tstore = second(t);   if (tstore<10) ttime+="0";
-        ttime += String(tstore) + 'Z';
+        ttime += String(tstore) + "Z";
     } else {
       // format easily read by humans
       // date
@@ -186,7 +186,7 @@ String currentTime(bool dFormat = 1){
         tstore = minute(t);   if (tstore<10) ttime+="0";
         ttime += String(tstore) + ":";
         tstore = second(t);   if (tstore<10) ttime+="0";
-        ttime += String(tstore) + 'UTC';
+        ttime += String(tstore) + "UTC";
     }
 
     return ttime;

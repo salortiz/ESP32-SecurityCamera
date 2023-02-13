@@ -27,8 +27,8 @@
  *      ESP32 support for Arduino IDE: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
  *
  *
- *      First time the ESP starts it will create an access point "ESPPortal" which you need to connect to in order to
- *      enter your wifi details.  default password = "12345678"   (change this in wifi.h)
+ *      First time the ESP starts it will create an access point "ESPcam" which you need to connect to in order to
+ *      enter your wifi details.  default password = "password"   (change this in net.h)
  *      see: https://randomnerdtutorials.com/wifimanager-with-esp8266-autoconnect-custom-parameter-and-manage-your-ssid-and-password
  *
  *
@@ -254,9 +254,9 @@ void setup() {
         }
     }
 #if POST_ENABLED
-    int pp = PostServerName.indexOf(':');
+    int pp = PostServerName.indexOf(":");
     if(pp != -1) {
-        PostServerPort = atoi(PostServerName.substring(pp+1).c_str());
+        PostServerPort = PostServerName.substring(pp+1).toInt();
         PostServerName.remove(pp);
     }
     log_system_message("Will post images to " + PostServerName + ":" +String(PostServerPort));
@@ -1822,8 +1822,11 @@ void saveJpgFrame(String filesName) {
         if (ftpImages) uploadImageByFTP(fb->buf, fb->len, FTPfilename);
 #endif
 #if POST_ENABLED
-        delay(200);   // required to stop server rejecting so soon after last one
-        if (PostImages) postImage(fb->buf, fb->len, FTPfilename);
+        if (PostImages) {
+            WiFiClient aclient = WiFiClient();
+            postImage(aclient, fb->buf, fb->len, FTPfilename);
+            aclient.stop();
+        }
 #endif
 
     } else {
@@ -2031,6 +2034,7 @@ void handleStrPst() {
     String message = "Streaming...";
     server.send(404, "text/plain", message);   // send reply as plain text
     uint32_t streamStop = (unsigned long)millis() + (maxCamStreamTime * 1000);              // time limit for stream
+    WiFiClient mclient = WiFiClient();
     while (millis() < streamStop )
     {
         fb = esp_camera_fb_get();
@@ -2042,10 +2046,9 @@ void handleStrPst() {
             fb = esp_camera_fb_get();
         }
         if(fb) { // Success
-            result = postImage(fb->buf, fb->len, String(FTPfilename + String(++frame_num)));
+            result = postImage(mclient, fb->buf, fb->len, String(FTPfilename + String(++frame_num)));
             esp_camera_fb_return(fb);
             if (result.indexOf("has been uploaded") == -1) break;
-            delay(200); // Expect 5fps
         } else {
             if (serialDebug) {
                 Serial.println("Capture of image failed");
@@ -2053,6 +2056,7 @@ void handleStrPst() {
             break;
         }
     }
+    mclient.stop();
     log_system_message("Remote video stream end:" + result);
     RestartCamera(PIXFORMAT_GRAYSCALE);                    // restart camera back to greyscale mode for motion detection
     TRIGGERtimer = millis();                               // reset retrigger timer to stop instant motion trigger

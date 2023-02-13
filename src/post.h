@@ -9,7 +9,7 @@
  **************************************************************************************************/
 
 
-String postImage(uint16_t*, size_t, String);
+String postImage(WiFiClient, uint16_t*, size_t, String);
 
 //  ----------------------  s e t t i n g s --------------------------
 const String PostServerPath = "/upload";         // the php script file location
@@ -21,16 +21,16 @@ const String PostServerPath = "/upload";         // the php script file location
 // ----------------------------------------------------------------
 // pass image frame buffer pointer, length, file name to use
 
-String postImage(uint8_t* fbBuf, size_t fbLen, String fName = "cwm") {
-    WiFiClient client = WiFiClient(); //server.client();
+String postImage(WiFiClient client, uint8_t* fbBuf, size_t fbLen, String fName = "cwm") {
+    //WiFiClient client = WiFiClient(); //server.client();
     String getAll;
     String getBody;
 
     long startTime = millis();
     long startTimer = 0;
-    if (serialDebug) Serial.println("Connecting to server: " + PostServerName);
+    if (serialDebug) Serial.println("Connecting to server: " + PostServerName + ":" + PostServerPort);
 
-    if (client.connect(PostServerName.c_str(), PostServerPort)) {
+    if (client.connected() || client.connect(PostServerName.c_str(), PostServerPort)) {
 #define LBOUND "1234567890009876564321"
         if (serialDebug) Serial.println("Connection successful");
         String head = "--"LBOUND"\r\n"
@@ -68,8 +68,6 @@ String postImage(uint8_t* fbBuf, size_t fbLen, String fName = "cwm") {
 
         // receive reply from server
         while ((startTimer + timoutTimer) > millis()) {
-            if (serialDebug) Serial.print(".");
-            delay(100);
             while (client.available()) {
                 char c = client.read();
                 if (c == '\n') {
@@ -82,8 +80,9 @@ String postImage(uint8_t* fbBuf, size_t fbLen, String fName = "cwm") {
                 startTimer = millis();
             }
             if (getBody.length()>0) break;
+            if (serialDebug) Serial.print(".");
+            delay(30);
         }
-        client.stop();
         if (serialDebug) {
             Serial.println();
             Serial.println(getBody);
