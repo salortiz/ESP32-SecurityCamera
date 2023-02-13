@@ -170,6 +170,7 @@ esp_err_t cameraImageSettings(framesize_t fsize) {
     } else if (fsize == FRAME_SIZE_PHOTO) {
         s->set_gain_ctrl(s, 1);                       // auto gain on (1 or 0)
         s->set_exposure_ctrl(s, 1);                   // auto exposure on (1 or 0)
+        s->set_vflip(s, cameraImageInvert);           // Invert image (0 or 1)
     } else {
         if (serialDebug) Serial.println("Unsupported fsize!");
         return ESP_ERR_CAMERA_FAILED_TO_SET_FRAME_SIZE;
