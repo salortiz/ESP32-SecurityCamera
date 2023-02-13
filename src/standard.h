@@ -78,16 +78,16 @@ void log_system_message(String smes) {
 
 void webheader(WiFiClient &client, char* adnlStyle = " ", int refresh = 0) {
     // start html page
-    client.write("HTTP/1.1 200 OK\r\n");
-    client.write("Content-Type: text/html\r\n");
-    client.write("Connection: close\r\n");
-    client.write("\r\n");
-    client.write("<!DOCTYPE HTML>\n");
-    client.write("<html lang='en'>\n");
-    client.write("<head>\n");
-    client.write("  <meta name='viewport' content='width=device-width, initial-scale=1.0'>\n");
+    client.write("HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "<!DOCTYPE HTML>\n"
+        "<html lang='en'>\n"
+        "<head>\n"
+        "<meta name='viewport' content='width=device-width, initial-scale=1.0'>\n");
     // page refresh
-    if (refresh > 0) client.printf("  <meta http-equiv='refresh' content='%c'>\n", refresh);
+    if (refresh > 0) client.printf("<meta http-equiv='refresh' content='%c'>\n", refresh);
 
     // HTML / CSS
 
@@ -190,11 +190,8 @@ void handleLogpage() {
     // build the html
 
     webheader(client);                         // send html page header
-
-    client.println("<P>");                     // start of section
-
-    client.println("<br>SYSTEM LOG<br><br>");
-
+    // start of section
+    client.println("<P><br>SYSTEM LOG<br><br>");
     // list all system messages
     int lpos = system_message_pointer;         // most recent entry
     for (int i=0; i < LogNumber; i++){         // count through number of entries
@@ -203,7 +200,6 @@ void handleLogpage() {
         if (lpos == 0) lpos = LogNumber;
         lpos--;
     }
-
     // close html page
     webfooter(client);                       // send html page footer
     delay(3);
@@ -236,7 +232,6 @@ void handleNotFound() {
     for ( uint8_t i = 0; i < server.args(); i++ ) {
         message += " " + server.argName ( i ) + ": " + server.arg ( i ) + "\n";
     }
-
     server.send ( 404, "text/plain", message );
     message = "";      // clear variable
 }
@@ -250,7 +245,6 @@ void handleNotFound() {
 void handleReboot(){
     String message = "Rebooting....";
     server.send(404, "text/plain", message);   // send reply as plain text
-
     // rebooting
     delay(500);          // give time to send the above html
     ESP.restart();
