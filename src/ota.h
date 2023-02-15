@@ -20,14 +20,12 @@
 
 
 #if defined ESP32
-  #include <Update.h>
+    #include <Update.h>
 #endif
 
-
 // forward declarations (i.e. details of all functions in this file)
-  void otaSetup();
-  void handleOTA();
-
+void otaSetup();
+void handleOTA();
 
 // ----------------------------------------------------------------
 //     -enable OTA
@@ -36,77 +34,76 @@
 //   Enable OTA updates, called when correct password has been entered
 
 void otaSetup() {
-
     OTAEnabled = 1;          // flag that OTA has been enabled
 
     // esp32 version (using webserver.h)
-    #if defined ESP32
-        server.on("/update", HTTP_POST, []() {
-          server.sendHeader("Connection", "close");
-          server.send(200, "text/plain", (Update.hasError()) ? "Update Failed!, rebooting..." : "Update complete, rebooting...");
-          delay(2000);
-          ESP.restart();
-          delay(2000);
-        }, []() {
-          HTTPUpload& upload = server.upload();
-          if (upload.status == UPLOAD_FILE_START) {
+#if defined ESP32
+    server.on("/update", HTTP_POST, []() {
+        server.sendHeader("Connection", "close");
+        server.send(200, "text/plain", (Update.hasError()) ? "Update Failed!, rebooting..." : "Update complete, rebooting...");
+        delay(2000);
+        ESP.restart();
+        delay(2000);
+    }, []() {
+        HTTPUpload& upload = server.upload();
+        if (upload.status == UPLOAD_FILE_START) {
             if (serialDebug) {
-              Serial.setDebugOutput(true);
-              Serial.printf("Update: %s\n", upload.filename.c_str());
+                Serial.setDebugOutput(true);
+                Serial.printf("Update: %s,%d\n", upload.filename.c_str(), upload.totalSize);
             }
             if (!Update.begin()) {        //start with max available size
-              if (serialDebug) Update.printError(Serial);
+                if (serialDebug) Update.printError(Serial);
             }
-          } else if (upload.status == UPLOAD_FILE_WRITE) {
-            if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+        } else if (upload.status == UPLOAD_FILE_WRITE) {
+          if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
               if (serialDebug) Update.printError(Serial);
-            }
-          } else if (upload.status == UPLOAD_FILE_END) {
+          }
+        } else if (upload.status == UPLOAD_FILE_END) {
             if (Update.end(true)) {      //true to set the size to the current progress
-              if (serialDebug) Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
+                if (serialDebug) Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
             } else {
-              if (serialDebug) Update.printError(Serial);
+                if (serialDebug) Update.printError(Serial);
             }
             if (serialDebug) Serial.setDebugOutput(false);
-          } else {
+        } else {
             if (serialDebug) Serial.printf("Update Failed Unexpectedly (likely broken connection): status=%d\n", upload.status);
-          }
-        });
-    #endif
+        }
+    });
+#endif
 
-    // esp8266 version  (using ESP8266WebServer.h)
-    #if defined ESP8266
-        server.on("/update", HTTP_POST, []() {
-          server.sendHeader("Connection", "close");
-          server.send(200, "text/plain", (Update.hasError()) ? "Update Failed!, rebooting..." : "Update complete, rebooting...");
-          delay(2000);
-          ESP.restart();
-          delay(2000);
-        }, []() {
-          HTTPUpload& upload = server.upload();
-          if (upload.status == UPLOAD_FILE_START) {
+// esp8266 version  (using ESP8266WebServer.h)
+#if defined ESP8266
+    server.on("/update", HTTP_POST, []() {
+        server.sendHeader("Connection", "close");
+        server.send(200, "text/plain", (Update.hasError()) ? "Update Failed!, rebooting..." : "Update complete, rebooting...");
+        delay(2000);
+        ESP.restart();
+        delay(2000);
+    }, []() {
+        HTTPUpload& upload = server.upload();
+        if (upload.status == UPLOAD_FILE_START) {
             if (serialDebug) Serial.setDebugOutput(true);
             WiFiUDP::stopAll();
             if (serialDebug) Serial.printf("Update: %s\n", upload.filename.c_str());
             uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
             if (!Update.begin(maxSketchSpace)) { //start with max available size
-              if (serialDebug) Update.printError(Serial);
+                if (serialDebug) Update.printError(Serial);
             }
-          } else if (upload.status == UPLOAD_FILE_WRITE) {
+        } else if (upload.status == UPLOAD_FILE_WRITE) {
             if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-              if (serialDebug) Update.printError(Serial);
+                if (serialDebug) Update.printError(Serial);
             }
-          } else if (upload.status == UPLOAD_FILE_END) {
+        } else if (upload.status == UPLOAD_FILE_END) {
             if (Update.end(true)) { //true to set the size to the current progress
-              if (serialDebug) Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
+                if (serialDebug) Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
             } else {
-              if (serialDebug) Update.printError(Serial);
+                if (serialDebug) Update.printError(Serial);
             }
             if (serialDebug) Serial.setDebugOutput(false);
-          }
-          yield();
-        });
-    #endif
+        }
+        yield();
+    });
+#endif
 
 }
 
