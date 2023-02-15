@@ -11,6 +11,7 @@
 
 #include <SPIFFS.h>
 
+const byte LogNumber = 30;                             // number of entries in the system log
 // ----------------------------------------------------------------
 //                              -Startup
 // ----------------------------------------------------------------
@@ -28,6 +29,20 @@ String lastClient = "n/a";                  // IP address of most recent client 
 int system_message_pointer = 0;             // pointer for current system message position
 String system_message[LogNumber + 1];       // system log message store  (suspect serial port issues caused if not +1 ???)
 
+// ----------------------------------------------------------------
+//                      -log a system message
+// ----------------------------------------------------------------
+
+void log_system_message(String smes) {
+    // add the new message to log
+    system_message[system_message_pointer] = currentTime(0) + " - " + smes;
+
+    // also send the message to serial
+    if (serialDebug) Serial.println("Log:" + system_message[system_message_pointer]);
+    // increment position pointer
+    system_message_pointer++;
+    if (system_message_pointer >= LogNumber) system_message_pointer = 0;
+}
 
 // ----------------------------------------------------------------
 //                    -decode IP addresses
@@ -51,24 +66,6 @@ String decodeIP(String IPadrs) {
 
     return IPadrs;
 }
-
-
-// ----------------------------------------------------------------
-//                      -log a system message
-// ----------------------------------------------------------------
-
-void log_system_message(String smes) {
-    // increment position pointer
-    system_message_pointer++;
-    if (system_message_pointer >= LogNumber) system_message_pointer = 0;
-
-    // add the new message to log
-    system_message[system_message_pointer] = currentTime(1) + " - " + smes;
-
-    // also send the message to serial
-    if (serialDebug) Serial.println("Log:" + system_message[system_message_pointer]);
-}
-
 
 // ----------------------------------------------------------------
 //                         -header (html)
@@ -95,36 +92,31 @@ void webheader(WiFiClient &client, char* adnlStyle = " ", int refresh = 0) {
     // client.printf(R"=====( <title>%s</title> <style> body { color: black; background-color: #28538c; text-align: center; } ul {list-style-type: none; margin: 0; padding: 0; overflow: hidden; background-color: rgb(234, 64, 0);} li {float: left;} li a {display: inline-block; color: white; text-align: center; padding: 30px 20px; text-decoration: none;} li a:hover { background-color: rgb(100, 0, 0);} %s </style> </head> <body> <ul> <li><a href='%s'>Home</a></li> <li><a href='/log'>Log</a></li> <li><a href='/bootlog'>BootLog</a></li> <li><a href='/stream'>Live Video</a></li> <li><a href='/images'>Stored Images</a></li> <li><a href='/live'>Capture Image</a></li> <li><a href='/imagedata'>Raw Data</a></li> <h1> <font color='#FF0000'>%s</h1></font> </ul>)=====", stitle, adnlStyle, HomeLink, stitle);
 
     client.printf(R"=====(
-        <title>%s</title>
-        <style>
-          body {
-            color: black;
-            background-color: #28538c;
-            text-align: center;
-          }
-          ul {list-style-type: none; margin: 0; padding: 0; overflow: hidden; background-color: rgb(234, 141, 14);}
-          li {float: left;}
-          li a {display: inline-block; color: white; text-align: center; padding: 30px 20px; text-decoration: none;}
-          li a:hover { background-color: rgb(100, 0, 0);}
-          %s
-        </style>
-      </head>
-      <body>
-        <ul>
-          <li><a href='%s'>Home</a></li>
-          <li><a href='/log'>Log</a></li>
-          <li><a href='/bootlog'>BootLog</a></li>
-          <li><a href='/stream'>Live Video</a></li>
-          <li><a href='/strpst'>Stream video</a></li>
-          <li><a href='/images'>Stored Images</a></li>
-          <li><a href='/live'>Capture Image</a></li>
-          <li><a href='/imagedata'>Raw Data</a></li>
-          <h1> <font color='#FF0000'>%s</h1></font>
-        </ul>
+<title>%s</title>
+<style>
+    body {color: black; background-color: #28538c; text-align: center;}
+    ul {list-style-type: none; margin: 0; padding: 0; overflow: hidden; background-color: rgb(234, 141, 14);}
+    li {float: left;}
+    li a {display: inline-block; color: white; text-align: center; padding: 30px 20px; text-decoration: none;}
+    li a:hover { background-color: rgb(100, 0, 0);}
+    .footer { position: fixed; bottom: 0; width: 100%; background-color: rgb(234,141,14); color: white; }
+    %s
+</style>
+</head>
+<body>
+<ul>
+    <li><a href='%s'>Home</a></li>
+    <li><a href='/log'>Log</a></li>
+    <li><a href='/bootlog'>BootLog</a></li>
+    <li><a href='/stream'>Live Video</a></li>
+    <li><a href='/strpst'>Stream video</a></li>
+    <li><a href='/images'>Stored Images</a></li>
+    <li><a href='/live'>Capture Image</a></li>
+    <li><a href='/imagedata'>Raw Data</a></li>
+    <h1> <font color='#FF0000'>%s</h1></font>
+</ul>
     )=====", stitle, adnlStyle, HomeLink, stitle);
 }
-
-
 
 // ----------------------------------------------------------------
 //                             -footer (html)
@@ -133,15 +125,9 @@ void webheader(WiFiClient &client, char* adnlStyle = " ", int refresh = 0) {
 // @param   client    http client
 
 void webfooter(WiFiClient &client) {
-
-    // get mac address
-    byte mac[6];
-    WiFi.macAddress(mac);
-
-    client.println("<br>");
-
+    //client.println("<br>");
     // Status display at bottom of screen 
-    client.println("<div style='text-align: center;background-color:rgb(234, 141, 14)'>");
+    client.println("<div class='footer'>");
     client.printf("<small>%s", colWhite);
     client.printf("%s %s", stitle, sversion);
 
@@ -159,7 +145,9 @@ void webfooter(WiFiClient &client) {
     client.printf(" | Spiffs: %dK", ( SPIFFS.totalBytes() - SPIFFS.usedBytes() ) / 1024  );             // if using spiffs
 
     // mac address 
-    //  client.printf(" | MAC: %2x%2x%2x%2x%2x%2x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);       // mac address
+    //byte mac[6];
+    //WiFi.macAddress(mac);
+    //client.printf(" | MAC: %2x%2x%2x%2x%2x%2x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);       // mac address
 
     // free PSRAM
     if (psramFound()) {
@@ -167,8 +155,8 @@ void webfooter(WiFiClient &client) {
     }
 
     // end 
-    client.printf("%s </small></div>\n", colEnd);
-    client.println("</body></html>");
+    client.printf("%s</small></div>\n", colEnd);
+    client.println("</div></body></html>");
 }
 
 
