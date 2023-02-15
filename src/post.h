@@ -22,19 +22,18 @@ const String PostServerPath = "/upload";         // the php script file location
 // pass image frame buffer pointer, length, file name to use
 
 String postImage(WiFiClient client, uint8_t* fbBuf, size_t fbLen, String fName = "cwm") {
-    //WiFiClient client = WiFiClient(); //server.client();
     String getAll;
     String getBody;
-
     long startTime = millis();
     long startTimer = 0;
-    if (serialDebug) Serial.println("Connecting to server: " + PostServerName + ":" + PostServerPort);
-
+    if (serialDebug)
+        Serial.println("Connecting to server: " + PostServerName + ":" + PostServerPort);
     if (client.connected() || client.connect(PostServerName.c_str(), PostServerPort)) {
 #define LBOUND "1234567890009876564321"
-        if (serialDebug) Serial.println("Connection successful");
+        if (serialDebug)
+            Serial.println("Connection successful");
         String head = "--"LBOUND"\r\n"
-            "Content-Disposition: form-data; name=\"imageFile\"; filename=\"" + fName + ".jpg\"\r\n"
+            "Content-Disposition: form-data; name=\"imageFile\"; filename=\"" + fName + "\"\r\n"
             "Content-Type: image/jpeg\r\n\r\n";
         String tail = "\r\n--"LBOUND"--\r\n";
 
@@ -94,9 +93,9 @@ String postImage(WiFiClient client, uint8_t* fbBuf, size_t fbLen, String fName =
 
     // log result
     if (getBody.indexOf("has been uploaded") == -1) {
-        log_system_message("Error sending image '" + fName + ".jpg' via POST");
+        log_system_message("Error sending image '" + fName + "' via POST");
     } else {
-        log_system_message("Image '" + fName + ".jpg' sent via POST in " + String(startTimer-startTime) + "ms");
+        log_system_message("Image '" + fName + "' sent via POST in " + String(startTimer-startTime) + "ms");
     }
 
     return getBody;
