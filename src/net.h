@@ -23,35 +23,23 @@
 const String AP_SSID = "ESPcam";
 const String AP_PASS = "password";
 
-
 // mDNS name
 //  const String mDNS_name = "esp32";
 const String mDNS_name = stitle;                                         // use sketch title
 // *************************************************************************************************
 
-// forward declarations
-void startWifiManager();
-String currentTime(bool);
-bool IsBST();
-void sendNTPpacket(const char*);
-time_t getNTPTime();
-String requestWebPage(String, String, int, int, String);
-
-
 // ----------------------------------------------------------------
 //                              -Startup
 // ----------------------------------------------------------------
-
 // wifi for esp8266 / esp32
 #if defined ESP32
     #include <esp_wifi.h>
     #include <WiFi.h>
     #include <WiFiClient.h>
-    //#include <WiFiMulti.h>
     #include <WebServer.h>    // https://github.com/espressif/arduino-esp32/blob/master/libraries/WebServer
     #define ESP_getChipId()   ((uint32_t)ESP.getEfuseMac())
-    WebServer ACserver(80);               // temporary for autoconnect
-    WebServer server(ServerPort);         // allows use of different ports
+    WebServer ACserver(80);             // temporary for autoconnect
+    WebServer server(ServerPort);       // allows use of different ports
     #include <ESPmDNS.h>                // see https://github.com/espressif/arduino-esp32/tree/master/libraries/ESPmDNS
 #elif defined ESP8266
     #include <ESP8266WiFi.h>              // https://github.com/esp8266/Arduino
@@ -66,9 +54,10 @@ String requestWebPage(String, String, int, int, String);
 #else
       #error "wifi.h: This sketch only works with ESP8266 or ESP32"
 #endif
+#include <time.h>
 
 // Autoconnect
-#include <AutoConnect.h>     // https://hieromon.github.io/AutoConnect
+#include <AutoConnectCore.h>     // https://hieromon.github.io/AutoConnect
 #if defined ESP32
     AutoConnect       portal(ACserver);
 #else
@@ -91,13 +80,107 @@ const String DoW[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
 const uint16_t _resyncSeconds = 7200;         // How often to resync the time (under normal conditions) 7200 = 2 hours
 const uint16_t _resyncErrorSeconds = 300;     // How often to resync the time (under error conditions) 300 = 5 minutes
 
+//-----------------------------------------------------------------------------
+//        send an NTP request to the time server at the given address
+//-----------------------------------------------------------------------------
+static void sendNTPpacket(const char* address) {
+    // set all bytes in the buffer to 0
+    memset(packetBuffer, 0, NTP_PACKET_SIZE);
+    // Initialize values needed to form NTP request
+    // (see URL above for details on the packets)
+    packetBuffer[0] = 0b11100011;   // LI, Version, Mode
+    packetBuffer[1] = 0;            // Stratum, or type of clock
+    packetBuffer[2] = 6;            // Polling Interval
+    packetBuffer[3] = 0xEC;         // Peer Clock Precision
+    // 8 bytes of zero for Root Delay & Root Dispersion
+    packetBuffer[12] = 49;
+    packetBuffer[13] = 0x4E;
+    packetBuffer[14] = 49;
+    packetBuffer[15] = 52;
+
+    // all NTP fields have been given values, now you can send a packet requesting a timestamp:
+    // Note that Udp.begin will request automatic translation (via a DNS server) from a
+    // name (eg pool.ntp.org) to an IP address. Never use a specific IP address yourself,
+    // let the DNS give back a random server IP address
+    NTPUdp.beginPacket(address, 123); //NTP requests are to port 123
+
+    // Get the data back
+    NTPUdp.write(packetBuffer, NTP_PACKET_SIZE);
+
+    // All done, the underlying buffer is now updated
+    NTPUdp.endPacket();
+
+}  // sendNTPpacket
+
+
+#include <sys/time.h>
+//-----------------------------------------------------------------------------
+//                contact the NTP pool and retrieve the time
+//-----------------------------------------------------------------------------
+
+static time_t getNTPTime() {
+    // Send a UDP packet to the NTP pool address
+    if (serialDebug) {
+        Serial.print("\nSending NTP packet to ");
+        Serial.print(timeServer);
+        Serial.print(": ");
+    }
+    sendNTPpacket(timeServer);
+
+    // Wait to see if a reply is available - timeout after X seconds. At least
+    // this way we exit the 'delay' as soon as we have a UDP packet to process
+#define UDPtimeoutSecs 3
+    int timeOutCnt = 0;
+    while (NTPUdp.parsePacket() == 0 && ++timeOutCnt < (UDPtimeoutSecs * 10)) {
+        delay(100);
+    }
+
+    // Is there UDP data present to be processed? Sneak a peek!
+    if (NTPUdp.peek() != -1) {
+        // We've received a packet, read the data from it
+        NTPUdp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
+
+        // The time-stamp starts at byte 40 of the received packet and is four bytes,
+        // or two words, long. First, extract the two words:
+        unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);
+        unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
+
+        // combine the four bytes (two words) into a long integer
+        // this is NTP time (seconds since Jan 1 1900)
+        unsigned long secsSince1900 = highWord << 16 | lowWord;     // shift highword 16 binary places to the left then combine with lowword
+        if (serialDebug) {
+            Serial.print("Seconds since Jan 1 1900 = ");
+            Serial.println(secsSince1900);
+        }
+
+        // now convert NTP time into everyday time:
+
+        // Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
+        const unsigned long seventyYears = 2208988800UL;     // UL denotes it is 'unsigned long'
+
+        // subtract seventy years:
+        unsigned long epoch = secsSince1900 - seventyYears;
+
+        // Reset the interval to get the time from NTP server in case we previously changed it
+        setSyncInterval(_resyncSeconds);
+        timeval tv = { epoch, 0 };
+        settimeofday(&tv, NULL);
+
+        return epoch;
+    }
+
+    // Failed to get an NTP/UDP response
+    if (serialDebug) Serial.println("No NTP response received");
+    setSyncInterval(_resyncErrorSeconds);       // try more frequently until a response is received
+
+    return 0;
+
+}  // getNTPTime
 
 // ----------------------------------------------------------------
 //                 -wifi initialise  (called from 'setup')
 // ----------------------------------------------------------------
-
 void startWifiManager() {
-
     // autoconnect settings - see https://hieromon.github.io/AutoConnect/adnetwork.html#change-ssid-and-password-for-softap
     ACconfig.apid = AP_SSID;                    // portal name
     ACconfig.psk  = AP_PASS;                    // portal password
@@ -147,7 +230,7 @@ void startWifiManager() {
 // ----------------------------------------------------------------
 // Notes: two formats available, for British summer time
 
-String currentTime(bool dFormat = 1){
+String currentTime(int dFormat = 1){
     time_t t=now();     // get current time
     String ttime;
     int tstore;
@@ -158,7 +241,6 @@ String currentTime(bool dFormat = 1){
 
     if (dFormat == 0) { // (ISO-8601) 
         // format suitable for file names
-        // date
         ttime += String(year(t)) + "-";
         tstore = month(t);   if (tstore<10) ttime+="0";
         ttime += String(tstore) + "-";
@@ -171,9 +253,8 @@ String currentTime(bool dFormat = 1){
         ttime += String(tstore) + ":";
         tstore = second(t);   if (tstore<10) ttime+="0";
         ttime += String(tstore) + "Z";
-    } else {
-      // format easily read by humans
-      // date
+    } else if(dFormat == 1) {
+        // format easily read by humans
         //ttime += DoW[weekday(t)-1] + " ";
         tstore = day(t);   if (tstore<10) ttime+="0";
         ttime += String(tstore) + "/";
@@ -182,16 +263,18 @@ String currentTime(bool dFormat = 1){
         ttime += String(year(t)) + " ";
         // time
         tstore = hour(t);   if (tstore<10) ttime+="0";
-        ttime += String(tstore) + ":";
+        ttime += String(tstore) + "_";
         tstore = minute(t);   if (tstore<10) ttime+="0";
-        ttime += String(tstore) + ":";
+        ttime += String(tstore) + "_";
         tstore = second(t);   if (tstore<10) ttime+="0";
         ttime += String(tstore) + "UTC";
+    } else {
+        time_t ct = time(NULL);
+        ttime = String(asctime(gmtime(&ct)));
     }
 
     return ttime;
 }  // currentTime
-
 
 //-----------------------------------------------------------------------------
 //                           -British Summer Time check
@@ -238,101 +321,6 @@ bool IsBST() {
 
 }  // IsBST
 
-
-//-----------------------------------------------------------------------------
-//        send an NTP request to the time server at the given address
-//-----------------------------------------------------------------------------
-
-void sendNTPpacket(const char* address) {
-    // set all bytes in the buffer to 0
-    memset(packetBuffer, 0, NTP_PACKET_SIZE);
-    // Initialize values needed to form NTP request
-    // (see URL above for details on the packets)
-    packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-    packetBuffer[1] = 0;            // Stratum, or type of clock
-    packetBuffer[2] = 6;            // Polling Interval
-    packetBuffer[3] = 0xEC;         // Peer Clock Precision
-    // 8 bytes of zero for Root Delay & Root Dispersion
-    packetBuffer[12] = 49;
-    packetBuffer[13] = 0x4E;
-    packetBuffer[14] = 49;
-    packetBuffer[15] = 52;
-
-    // all NTP fields have been given values, now you can send a packet requesting a timestamp:
-    // Note that Udp.begin will request automatic translation (via a DNS server) from a
-    // name (eg pool.ntp.org) to an IP address. Never use a specific IP address yourself,
-    // let the DNS give back a random server IP address
-    NTPUdp.beginPacket(address, 123); //NTP requests are to port 123
-
-    // Get the data back
-    NTPUdp.write(packetBuffer, NTP_PACKET_SIZE);
-
-    // All done, the underlying buffer is now updated
-    NTPUdp.endPacket();
-
-}  // sendNTPpacket
-
-
-//-----------------------------------------------------------------------------
-//                contact the NTP pool and retrieve the time
-//-----------------------------------------------------------------------------
-
-time_t getNTPTime() {
-    // Send a UDP packet to the NTP pool address
-    if (serialDebug) {
-        Serial.print("\nSending NTP packet to ");
-        Serial.print(timeServer);
-        Serial.print(": ");
-    }
-    sendNTPpacket(timeServer);
-
-    // Wait to see if a reply is available - timeout after X seconds. At least
-    // this way we exit the 'delay' as soon as we have a UDP packet to process
-#define UDPtimeoutSecs 3
-    int timeOutCnt = 0;
-    while (NTPUdp.parsePacket() == 0 && ++timeOutCnt < (UDPtimeoutSecs * 10)) {
-        delay(100);
-    }
-
-    // Is there UDP data present to be processed? Sneak a peek!
-    if (NTPUdp.peek() != -1) {
-        // We've received a packet, read the data from it
-        NTPUdp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
-
-        // The time-stamp starts at byte 40 of the received packet and is four bytes,
-        // or two words, long. First, extract the two words:
-        unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);
-        unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
-
-        // combine the four bytes (two words) into a long integer
-        // this is NTP time (seconds since Jan 1 1900)
-        unsigned long secsSince1900 = highWord << 16 | lowWord;     // shift highword 16 binary places to the left then combine with lowword
-        if (serialDebug) {
-            Serial.print("Seconds since Jan 1 1900 = ");
-            Serial.println(secsSince1900);
-        }
-
-        // now convert NTP time into everyday time:
-
-        // Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
-        const unsigned long seventyYears = 2208988800UL;     // UL denotes it is 'unsigned long'
-
-        // subtract seventy years:
-        unsigned long epoch = secsSince1900 - seventyYears;
-
-        // Reset the interval to get the time from NTP server in case we previously changed it
-        setSyncInterval(_resyncSeconds);
-
-        return epoch;
-    }
-
-    // Failed to get an NTP/UDP response
-    if (serialDebug) Serial.println("No NTP response received");
-    setSyncInterval(_resyncErrorSeconds);       // try more frequently until a response is received
-
-    return 0;
-
-}  // getNTPTime
 
 
 // ----------------------------------------------------------------
@@ -417,7 +405,6 @@ String requestWebPage(String ip, String page, int port, int maxChars, String cut
 
 }  // requestWebPage
 
-
 /*
     Idea for better code:
 
@@ -432,5 +419,4 @@ String requestWebPage(String ip, String page, int port, int maxChars, String cut
                                 }
 
 */
-
 // --------------------------- E N D -----------------------------
