@@ -35,7 +35,6 @@ void handleOTA();
 
 void otaSetup() {
     OTAEnabled = 1;          // flag that OTA has been enabled
-
     // esp32 version (using webserver.h)
 #if defined ESP32
     server.on("/update", HTTP_POST, []() {
@@ -45,11 +44,12 @@ void otaSetup() {
         ESP.restart();
         delay(2000);
     }, []() {
+        disableAllFunctions = 1;
         HTTPUpload& upload = server.upload();
         if (upload.status == UPLOAD_FILE_START) {
             if (serialDebug) {
                 Serial.setDebugOutput(true);
-                Serial.printf("Update: %s,%d\n", upload.filename.c_str(), upload.totalSize);
+                Serial.printf("Update: %s,%d\n", upload.filename.c_str(), server.clientContentLength());
             }
             if (!Update.begin()) {        //start with max available size
                 if (serialDebug) Update.printError(Serial);
@@ -116,91 +116,56 @@ void otaSetup() {
 
 void handleOTA(){
 
-  WiFiClient client = server.client();          // open link with client
+    WiFiClient client = server.client();          // open link with client
 
-  // log page request including clients IP address
+    // log page request including clients IP address
     IPAddress cip = client.remoteIP();
     String clientIP = String(cip[0]) +"." + String(cip[1]) + "." + String(cip[2]) + "." + String(cip[3]);
     clientIP = decodeIP(clientIP);               // check for known IP addresses
     log_system_message("OTA page requested from: " + clientIP);
 
-  // check if valid password supplied
+    // check if valid password supplied
     if (server.hasArg("pwd")) {
-      if (server.arg("pwd") == OTAPassword) otaSetup();    // Enable over The Air updates (OTA)
-      else log_system_message("Invalid OTA password entered from " + clientIP);
+        if (server.arg("pwd") == OTAPassword) otaSetup();    // Enable over The Air updates (OTA)
+        else log_system_message("Invalid OTA password entered from " + clientIP);
     }
-
-
-
-  // -----------------------------------------
-
-  if (OTAEnabled == 0) {
-
-    // OTA is not enabled so request password to enable it
-
-      webheader(client);                            // add the standard html header
-
-/*
-      client.print (R"=====(
-         <form name='loginForm'>
-            <table width='20%' bgcolor='A09F9F' align='center'>
-                <tr>
-                    <td colspan=2>
-                        <center><font size=4><b>Enter OTA password</b></font></center><br>
-                    </td>
-                        <br>
-                </tr><tr>
-                    <td>Password:</td>
-                    <td><input type='Password' size=25 name='pwd'><br></td><br><br>
-                </tr><tr>
-                    <td><input type='submit' onclick='check(this.form)' value='Login'></td>
-                </tr>
-            </table>
-        </form>
-        <script>
-            function check(form)
-            {
-              window.open('/ota?pwd=' + form.pwd.value , '_self')
-            }
-        </script>
+    // -----------------------------------------
+    webheader(client);                            // add the standard html header
+    if (!OTAEnabled) {
+        client.print (R"=====(
+<form name='loginForm'>
+<table width='20%' bgcolor='A09F9F' align='center'>
+    <tr>
+        <td colspan=2><center><font size=4><b>Enter OTA password</b></font></center><br></td>
+        <br>
+    </tr><tr>
+        <td>Password:</td><td><input type='Password' size=25 name='pwd'><br></td><br><br>
+    </tr><tr>
+        <td><input type='submit' onclick='check(this.form)' value='Login'></td>
+    </tr>
+</table>
+</form>
+<script>
+function check(form) {
+    window.open('/ota?pwd=' + form.pwd.value , '_self')
+}
+</script>
       )=====");
-*/     
-// above compacted via https://www.textfixer.com/html/compress-html-compression.php
-client.print (R"=====( <form name='loginForm'> <table width='20%' bgcolor='A09F9F' align='center'> <tr> <td colspan=2> <center><font size=4><b>Enter OTA password</b></font></center><br> </td> <br> </tr><tr> <td>Password:</td> <td><input type='Password' size=25 name='pwd'><br></td><br><br> </tr><tr> <td><input type='submit' onclick='check(this.form)' value='Login'></td> </tr> </table> </form> <script> function check(form) { window.open('/ota?pwd=' + form.pwd.value , '_self') } </script>)=====");
-
-      webfooter(client);                          // add the standard web page footer
-
-  }
-
-  // -----------------------------------------
-
-  if (OTAEnabled == 1) {
-
-    // OTA is enabled so implement it
-
-      webheader(client);                            // add the standard html header
-
-      client.write("<br><H1>Update firmware</H1><br>\n");
-      client.printf("Current version =  %s, %s \n\n", stitle, sversion);
-
-      client.write("<form method='POST' action='/update' enctype='multipart/form-data'>\n");
-      client.write("<input type='file' style='width: 300px' name='update'>\n");
-      client.write("<br><br><input type='submit' value='Update'></form><br>\n");
-
-      client.write("<br><br>Device will reboot when upload complete");
-      client.printf("%s <br>To disable OTA restart device<br> %s \n", colRed, colEnd);
-
-      webfooter(client);                          // add the standard web page footer
-  }
-
-  // -----------------------------------------
-
-
-  // close html page
+    }
+    else {
+        // OTA is enabled so implement it
+        client.write("<br><H1>Update firmware</H1><br>\n");
+        client.printf("Current version =  %s, %s \n\n", stitle, sversion);
+        client.write("<form method='POST' action='/update' enctype='multipart/form-data'>\n"
+            "<input type='file' style='width: 300px' name='update'>\n"
+            "<br><br><input type='submit' value='Update'></form><br>\n"
+            "<br><br>Device will reboot when upload complete");
+        client.printf("%s <br>To disable OTA restart device<br> %s \n", colRed, colEnd);
+    }
+    // -----------------------------------------
+    webfooter(client);                          // add the standard web page footer
+    // close html page
     delay(3);
     client.stop();
-
 }
-
-
 // ---------------------------------------------- end ----------------------------------------------
