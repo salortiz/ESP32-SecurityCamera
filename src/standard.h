@@ -9,9 +9,6 @@
  *
  **************************************************************************************************/
 
-#include <SPIFFS.h>
-
-const byte LogNumber = 30;                             // number of entries in the system log
 // ----------------------------------------------------------------
 //                              -Startup
 // ----------------------------------------------------------------
@@ -25,14 +22,14 @@ const char colEnd[] = "</font>";                          // end coloured text
 const char htmlSpace[] = "&ensp;";                        // leave a space
 
 // misc variables
-String lastClient = "n/a";                  // IP address of most recent client connected
-int system_message_pointer = 0;             // pointer for current system message position
-String system_message[LogNumber + 1];       // system log message store  (suspect serial port issues caused if not +1 ???)
+static String lastClient = "n/a";                  // IP address of most recent client connected
+static const byte LogNumber = 30;                  // number of entries in the system log
+static String system_message[LogNumber + 1];       // system log message store  (suspect serial port issues caused if not +1 ???)
+static int system_message_pointer = 0;             // pointer for current system message position
 
 // ----------------------------------------------------------------
 //                      -log a system message
 // ----------------------------------------------------------------
-
 void log_system_message(String smes) {
     // add the new message to log
     system_message[system_message_pointer] = currentTime(0) + " - " + smes;
@@ -44,11 +41,29 @@ void log_system_message(String smes) {
     if (system_message_pointer >= LogNumber) system_message_pointer = 0;
 }
 
+// --------------------------------------------------------------------------------------
+//                                 -wifi connection check
+// --------------------------------------------------------------------------------------
+bool WIFIcheck() {
+    if (WiFi.status() != WL_CONNECTED) {
+        if ( wifiok == 1) {
+            log_system_message("Wifi connection lost");
+            wifiok = 0;
+        }
+    } else {
+        // wifi is ok
+        if ( wifiok == 0) {
+            log_system_message("Wifi connection is back");
+            wifiok = 1;
+        }
+    }
+    return wifiok;
+}
+
 // ----------------------------------------------------------------
 //                    -decode IP addresses
 // ----------------------------------------------------------------
 // Check for known IP addresses
-
 String decodeIP(String IPadrs) {
 
     if (IPadrs == "192.168.1.176") IPadrs = "HA server";
@@ -99,7 +114,7 @@ void webheader(WiFiClient &client, char* adnlStyle = " ", int refresh = 0) {
     li {float: left;}
     li a {display: inline-block; color: white; text-align: center; padding: 30px 20px; text-decoration: none;}
     li a:hover { background-color: rgb(100, 0, 0);}
-    .footer { position: fixed; bottom: 0; width: 100%; background-color: rgb(234,141,14); color: white; }
+    .footer { position: fixed; bottom: 0; width: 100%%; height: 2em; background-color: rgb(234,141,14);}
     %s
 </style>
 </head>
@@ -155,28 +170,18 @@ void webfooter(WiFiClient &client) {
     }
 
     // end 
-    client.printf("%s</small></div>\n", colEnd);
+    client.printf("%s</small>\n", colEnd);
     client.println("</div></body></html>");
 }
-
 
 // ----------------------------------------------------------------
 //       -log page requested    i.e. http://x.x.x.x/log
 // ----------------------------------------------------------------
-
 void handleLogpage() {
-
     WiFiClient client = server.client();                     // open link with client
+    log_requested("Log", client);
 
-/*
-    // log page request including clients IP address
-    IPAddress cip = client.remoteIP();
-    String clientIP = decodeIP(cip.toString());   // get ip address and check if it is known
-    log_system_message("Log page requested from: " + clientIP);
-*/    
-    
     // build the html
-
     webheader(client);                         // send html page header
     // start of section
     client.println("<P><br>SYSTEM LOG<br><br>");
@@ -194,20 +199,26 @@ void handleLogpage() {
     client.stop();
 }
 
+// ----------------------------------------------------------------
+//   -reboot web page requested        i.e. http://x.x.x.x/reboot
+// ----------------------------------------------------------------
+// note: this can fail if the esp has just been reflashed and not restarted
+void handleReboot(){
+    String message = "Rebooting....";
+    server.send(404, "text/plain", message);   // send reply as plain text
+    // rebooting
+    delay(500);          // give time to send the above html
+    ESP.restart();
+    delay(5000);         // restart fails without this delay
+}
 
 // ----------------------------------------------------------------
 //                      -invalid web page requested
 // ----------------------------------------------------------------
-
 void handleNotFound() {
-
     WiFiClient client = server.client();          // open link with client
-
     // log page request including clients IP address
-    IPAddress cip = client.remoteIP();
-    String clientIP = decodeIP(cip.toString());   // get ip address and check if it is known
-    log_system_message("Invalid URL requested from: " + clientIP);
-
+    log_requested("Invalid URL '"+server.uri()+"'", client);
     String message = "File Not Found\n\n";
     message += "URI: ";
     message += server.uri();
@@ -220,44 +231,8 @@ void handleNotFound() {
     for ( uint8_t i = 0; i < server.args(); i++ ) {
         message += " " + server.argName ( i ) + ": " + server.arg ( i ) + "\n";
     }
-    server.send ( 404, "text/plain", message );
+    server.send (404, "text/plain", message );
     message = "";      // clear variable
-}
-
-
-// ----------------------------------------------------------------
-//   -reboot web page requested        i.e. http://x.x.x.x/reboot
-// ----------------------------------------------------------------
-// note: this can fail if the esp has just been reflashed and not restarted
-
-void handleReboot(){
-    String message = "Rebooting....";
-    server.send(404, "text/plain", message);   // send reply as plain text
-    // rebooting
-    delay(500);          // give time to send the above html
-    ESP.restart();
-    delay(5000);         // restart fails without this delay
-}
-
-
-// --------------------------------------------------------------------------------------
-//                                 -wifi connection check
-// --------------------------------------------------------------------------------------
-
-bool WIFIcheck() {
-    if (WiFi.status() != WL_CONNECTED) {
-        if ( wifiok == 1) {
-            log_system_message("Wifi connection lost");
-            wifiok = 0;
-        }
-    } else {
-        // wifi is ok
-        if ( wifiok == 0) {
-            log_system_message("Wifi connection is back");
-            wifiok = 1;
-        }
-    }
-    return wifiok;
 }
 
 // --------------------------------------------------------------------------------------
@@ -268,7 +243,6 @@ bool WIFIcheck() {
 //              led1.on();
 
 class Led {
-
     private:
     byte _gpioPin;                                     // gpio pin of the LED
     bool _onState;                                     // logic state when LED is on
@@ -315,7 +289,6 @@ class Led {
         if (fTempStat == _onState) on();                  // return led status if it was on
     }
 };
-
 
 #ifdef EXTRA_CLASSES
 // --------------------------------------------------------------------------------------
@@ -371,7 +344,6 @@ class Button {
     void debounce(int debounceDelay) {          // change debounce delay setting
         _debounceDelay = max(debounceDelay, 0);
     }
-
 };
 #endif /* EXTRA_CLASSES */
 
